@@ -1,0 +1,43 @@
+{
+  "enumOptions": {
+    "MIC": [
+      "XINE",
+      "XZCE",
+      "XDCE",
+      "XKFE",
+      "XSGE"
+    ],
+    "MICFamily": [
+      "China Futures",
+      "Hong Kong Futures",
+      "Energy Futures"
+    ],
+    "AccountType": [
+      "GMI",
+      "EXCHANGE_ACCOUNT",
+      "SMX_ACCOUNT"
+    ],
+    "Timezone": [
+      "Asia/Hong_Kong",
+      "Asia/Singapore",
+      "UTC"
+    ],
+    "AccountIds": [
+      "DC161522",
+      "DC107",
+      "CO795186",
+      "55300162",
+      "0694"
+    ],
+    "InternalEmail": [
+      "gset-futures@com.xx",
+      "ops@com.xx",
+      "laur.yufer@com.xx"
+    ],
+    "ExternalEmail": [
+      "treasury@mwam.com",
+      "ops@pharo.com",
+      "clarence.yeo@xx.com"
+    ]
+  }
+}
