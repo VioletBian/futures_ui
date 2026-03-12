@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package com.xx.futures.evetor.alert;
+
+option java_multiple_files = true;
+option java_package = "com.xx.futures.evetor.alert";
+option java_outer_classname = "AlertRuleProto";
+
+message LimitUsageRule {
+  string rule_id = 1;
+  string email_subject = 2;
+  repeated string account_ids = 3;
+  string account_type = 4;
+  string internal_email = 5;
+  string external_email = 6;
+  bool is_external = 7;
+
+  oneof venue_selector {
+    MicSelector mic_selector = 8;
+    MicFamilySelector mic_family_selector = 9;
+  }
+
+  oneof trigger_selector {
+    ThresholdTrigger threshold_trigger = 10;
+    TimeTrigger time_trigger = 11;
+  }
+}
+
+message MicSelector {
+  repeated string mic = 1;
+}
+
+message MicFamilySelector {
+  repeated string mic_family = 1;
+}
+
+message ThresholdTrigger {
+  string threshold = 1;
+}
+
+message TimeTrigger {
+  string alert_time = 1;
+  string timezone = 2;
+}
