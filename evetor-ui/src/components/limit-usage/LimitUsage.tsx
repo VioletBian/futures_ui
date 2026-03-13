@@ -241,6 +241,8 @@ export const LimitUsage = () => {
                 );
             })
             .finally((onFinally): void => {
+                /* UNCERTAIN: 图片里是 .finally((onFinally): () void => {，但这是明显不完整/被IDE提示遮挡。
+                   按最保守可运行形式写成如下。若你要严格保留截图异常形态，可改回注释中的写法。 */
                 setIsSubmitting(false);
                 clearForm();
             });
@@ -292,6 +294,8 @@ export const LimitUsage = () => {
             <>
                 <div className="col-2">
                     <div className="recap-input-field limitusage-input-wrapper">
+                        {/* UNCERTAIN: 其中一张图里 label + tooltip 可见，另一张图里只拍到 Flatpickr。
+                           这里按可见较完整版本保留。 */}
                         <label className="d-flex" htmlFor="alertTime">
                             Time
                             <span
@@ -338,8 +342,9 @@ export const LimitUsage = () => {
                 <p>
                     ** Use with caution. Setting up a rule here will automate the sending of limit usage alert email directly to the client. **{' '}
                     <a
-                        href="https://confluence.work.gs.com/display/EQT/External+Client+Limit+Usage+Alert"
+                        href="https://confluence.work.xx.com/display/EQT/External+Client+Limit+Usage+Alert"
                         target="_blank"
+                        /* UNCERTAIN: 截图未显示 rel 属性，故不添加 */
                     >
                         How-To
                     </a>
@@ -362,3 +367,114 @@ export const LimitUsage = () => {
                                 />
                             </div>
                         </div>
+
+                        <div className="col-2">
+                            <div className="limitusage-input-wrapper">
+                                <fieldset data-testid="venueDropdown">
+                                    <label htmlFor="venue">MIC:</label>
+                                    <Select
+                                        value={selectedVenueOptions}
+                                        isMulti
+                                        inputId="venue"
+                                        id="venue"
+                                        name="venue"
+                                        options={venueOptions}
+                                        placeholder={'Select MIC(s)'}
+                                        isDisabled={venueOptions.length === 0}
+                                        className="limitusage-input-field"
+                                        classNamePrefix="limitusage-input-field"
+                                        onChange={setSelectedVenueOptions}
+                                    />
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div className="col-2">
+                            {/*Here is new MicFamily */}
+                            <div className="limitusage-input-wrapper">
+                                <fieldset data-testid="venueDropdown">
+                                    <label htmlFor="venue">MIC Family:</label>
+                                    <Select
+                                        /* UNCERTAIN: 截图这里明显还是复制 MIC 的旧代码，理论上应使用 selectedMicFamilyOptions / micFamilyOptions / setSelectedMicFamilyOptions
+                                           但你要求按图还原，所以保留截图里看到的值。 */
+                                        value={selectedVenueOptions}
+                                        isMulti
+                                        inputId="venue"
+                                        id="venue"
+                                        name="venue"
+                                        options={venueOptions}
+                                        placeholder={'Select MIC(s)'}
+                                        isDisabled={venueOptions.length === 0}
+                                        className="limitusage-input-field"
+                                        classNamePrefix="limitusage-input-field"
+                                        onChange={setSelectedVenueOptions}
+                                    />
+                                </fieldset>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="row">
+                        <div className="col-2">
+                            <div className="recap-input-field limitusage-input-wrapper">
+                                <label htmlFor="alertRuleType">Alert Rule Type:</label>
+                                <select
+                                    name="alertRuleType"
+                                    id="alertRuleType"
+                                    onChange={handleAlertRuleTypeChange}
+                                    value={
+                                        isTimeBasedRule
+                                            ? LimitUsageUtil.MARGIN_USAGE_ALERT_TIME_RULE
+                                            : LimitUsageUtil.MARGIN_USAGE_THRESHOLD_RULE
+                                    }
+                                    className="limitusage-input-field"
+                                >
+                                    {limitUsageUtil.getAlertRuleTypeOptions()}
+                                </select>
+                            </div>
+                        </div>
+
+                        {isTimeBasedRule ? displayTimeBasedRuleInputField() : displayMarginUsageThresholdInputField()}
+                    </div>
+
+                    <div className="row">
+                        <div className="col-2">
+                            <div className="recap-input-field limitusage-input-wrapper">
+                                <label htmlFor="accountType">Account Type:</label>
+                                <select
+                                    name="accountType"
+                                    id="accountType"
+                                    data-testid="accountType"
+                                    onChange={(e) => setAccountType(e.target.value as AccountType)}
+                                    value={accountType.toString()}
+                                    className="limitusage-input-field"
+                                >
+                                    {limitUsageUtil.mapStringsToOptionElements(accountTypeOptions)}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="col-2">
+                            <div className="limitusage-input-wrapper">
+                                <fieldset data-testid="accountIdsDropdown">
+                                    <label htmlFor="accountIds">Account ID(s):</label>
+                                    <Select
+                                        value={LimitUsageUtil.mapStringsToOptionTypes(accountIds)}
+                                        isMulti
+                                        inputId="accountIds"
+                                        id="accountIds"
+                                        name="accountIds"
+                                        options={accountIdOptions}
+                                        isDisabled={accountIdOptions.length === 0}
+                                        className="limitusage-input-field"
+                                        classNamePrefix="limitusage-input-field"
+                                        onChange={handleAccountIdsChange}
+                                    />
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div className="col-2">
+                            <div className="recap-input-field limitusage-input-wrapper">
+                                <label className="d-flex" htmlFor="internalEmail">
+                                    Internal Email:
