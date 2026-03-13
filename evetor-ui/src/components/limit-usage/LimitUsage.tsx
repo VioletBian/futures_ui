@@ -33,16 +33,14 @@ export const LimitUsage = () => {
     // Dropdowns
     const [accountIdOptions, setAccountIdOptions] = useState<OptionsOrGroups<any, any>>([]);
     const [externalEmailOptions, setExternalEmailOptions] = useState<string[]>([]);
-    // for mic
     const [venueOptions, setVenueOptions] = useState<OptionsOrGroups<any, any>>([]);
     const [selectedVenueOptions, setSelectedVenueOptions] = useState<OptionsOrGroups<any, any>>([]);
-    // for mic family
     const [micFamilyOptions, setMicFamilyOptions] = useState<OptionsOrGroups<any, any>>([]);
     const [selectedMicFamilyOptions, setSelectedMicFamilyOptions] = useState<OptionsOrGroups<any, any>>([]);
-    const [accountTypeOptions, setAccountTypeOptions] = useState<string[]>([LimitUsageUtil.GMI_ACCOUNT_TYPE_STRING]);
+    const [accountTypeOptions, setAccountTypeOptions] = useState<string[]>([...LimitUsageUtil.GMI_ACCOUNT_TYPE_STRING]);
 
     // Limit Usage Threshold
-    const limitUsageThresholdStat = useRef(null);
+    const limitUsageThresholdStat = useRef<any>(null);
     const prevLimitUsageThresholdStatStr = useRef<string>('');
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -53,36 +51,53 @@ export const LimitUsage = () => {
     }, []);
 
     useEffect((): void => {
-        if (venueOptions.length > 0) return; // only load venue options once at initialization
+        if (venueOptions.length > 0) return;
         fetchVenues();
     }, [venueOptions]);
 
     useEffect((): void => {
-        if (micFamilyOptions.length > 0) return; // only load venue options once at initialization
+        if (micFamilyOptions.length > 0) return;
         fetchMicFamilies();
     }, [micFamilyOptions]);
 
     useEffect((): void => {
-        // clean and set selected accountType to GMI
-        // Reason: if user selects China Mic and accountType ExchangeAccount, then unselects China Mic,
-        // If ExchangeAccount should be an invalid accountType option. Having selected accountType as ExchangeAccount would cause issue.
+        // Any market dimension change should reset account type to GMI first
         setAccountType(AccountType.GMI_ACCOUNT);
-        setAccountTypeOptions(LimitUsageUtil.getAccountTypeOptions(selectedVenueOptions));
-    }, [selectedVenueOptions]);
+        setAccountTypeOptions(
+            limitUsageUtil.getAccountTypeOptions(selectedVenueOptions, selectedMicFamilyOptions)
+        );
+    }, [selectedVenueOptions, selectedMicFamilyOptions]);
 
     useEffect((): void => {
         updateAccountIdOptions();
-    }, [accountType, accountTypeOptions, selectedVenueOptions]);
+    }, [accountType, accountTypeOptions, selectedVenueOptions, selectedMicFamilyOptions]);
+
+    const handleVenueChange = (selectedOptions: any): void => {
+        const nextSelected = selectedOptions || [];
+        setSelectedVenueOptions(nextSelected);
+        if (nextSelected.length > 0) {
+            setSelectedMicFamilyOptions([]);
+        }
+    };
+
+    const handleMicFamilyChange = (selectedOptions: any): void => {
+        const nextSelected = selectedOptions || [];
+        setSelectedMicFamilyOptions(nextSelected);
+        if (nextSelected.length > 0) {
+            setSelectedVenueOptions([]);
+        }
+    };
 
     const updateAccountIdOptions = (): void => {
-        // Reset selected values for accountIds and externalEmail when accountIdOptions change
         setAccountIds([]);
         setExternalEmail('');
+        setExternalEmailOptions([]);
         setAccountIdOptions(
             limitUsageUtil.getFilteredAccountOptions(
                 accountToEmailMappings.current,
                 allChinaAccounts.current,
                 selectedVenueOptions,
+                selectedMicFamilyOptions,
                 accountType
             )
         );
@@ -91,8 +106,8 @@ export const LimitUsage = () => {
     const fetchVenues = (): void => {
         limitUsageUtil
             .fetchVenuesFromWaterfall()
-            .then((venues) => setVenueOptions(venues))
-            .catch((err): void => {
+            .then((venues: any) => setVenueOptions(venues))
+            .catch((err: any): void => {
                 NotificationBannerUtil.show('Error fetching MIC ' + err, NotificationTypes.DANGER, false);
             });
     };
@@ -100,8 +115,8 @@ export const LimitUsage = () => {
     const fetchMicFamilies = (): void => {
         limitUsageUtil
             .fetchMicFamilyFromWaterfall()
-            .then((micFamilies) => setMicFamilyOptions(micFamilies))
-            .catch((err): void => {
+            .then((micFamilies: any) => setMicFamilyOptions(micFamilies))
+            .catch((err: any): void => {
                 NotificationBannerUtil.show('Error fetching MIC Family ' + err, NotificationTypes.DANGER, false);
             });
     };
@@ -112,7 +127,7 @@ export const LimitUsage = () => {
             .then((res: any): void => {
                 accountToEmailMappings.current = res?.data || {};
             })
-            .catch((err: any): void => {
+            .catch((): void => {
                 NotificationBannerUtil.show(
                     'Failed to fetch client setting mappings for accounts. ' + SUPPORT_MSG,
                     NotificationTypes.DANGER,
@@ -123,11 +138,10 @@ export const LimitUsage = () => {
 
     const fetchChinaAccounts = async (): Promise<void> => {
         const promises = [
-            limitUsageUtil.getChinaAccounts(LimitUsageUtil.GMI_ACCOUNT).then((res): void => {
+            limitUsageUtil.getChinaAccounts(LimitUsageUtil.GMI_ACCOUNT).then((res: any): void => {
                 allChinaAccounts.current.gmiAccounts = res?.data || [];
             }),
-
-            limitUsageUtil.getChinaAccounts(LimitUsageUtil.EXCHANGE_ACCOUNT).then((res): void => {
+            limitUsageUtil.getChinaAccounts(LimitUsageUtil.EXCHANGE_ACCOUNT).then((res: any): void => {
                 allChinaAccounts.current.exchangeAccounts = res?.data || [];
             })
         ];
@@ -136,10 +150,10 @@ export const LimitUsage = () => {
         limitUsageUtil.showNotificationBannerForEmptyChinaAccounts(allChinaAccounts.current);
     };
 
-    const handleAccountIdsChange = (selectedAccountOptions: OptionsOrGroups<any, any>): void => {
-        const accountIds: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedAccountOptions);
-        setExternalEmailOptions(limitUsageUtil.getExternalEmailOptions(accountToEmailMappings.current, accountIds));
-        setAccountIds(accountIds);
+    const handleAccountIdsChange = (selectedAccountOptions: any): void => {
+        const nextAccountIds: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedAccountOptions);
+        setExternalEmailOptions(limitUsageUtil.getExternalEmailOptions(accountToEmailMappings.current, nextAccountIds));
+        setAccountIds(nextAccountIds);
     };
 
     const onOpAndValueChanged = (event: any): void => {
@@ -161,31 +175,39 @@ export const LimitUsage = () => {
     const onCheckboxChange = (event: any): void => {
         const { checked } = event.target;
         setIsExternal(checked);
-
         if (!checked) {
             setExternalEmail('');
         }
     };
 
     const fillForm = (): void => {
+        const selectedMic: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedVenueOptions);
+        const selectedMicFamily: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedMicFamilyOptions);
+
         externalLimitUsageAlertFormTemplate.current.message = emailSubject;
-        externalLimitUsageAlertFormTemplate.current.venue = LimitUsageUtil.mapOptionTypesToStrings(selectedVenueOptions);
+        externalLimitUsageAlertFormTemplate.current.venue = selectedMic;
+        // NOTE: if your actual model type doesn't yet contain micFamily, add it there.
+        (externalLimitUsageAlertFormTemplate.current as any).micFamily = selectedMicFamily;
+
         externalLimitUsageAlertFormTemplate.current.accountId = accountIds;
         externalLimitUsageAlertFormTemplate.current.emailAddress = internalEmail;
         externalLimitUsageAlertFormTemplate.current.clientLimitUsageEmail = isExternal;
         externalLimitUsageAlertFormTemplate.current.hasHistoricalClientLimitUsageEmail = false;
-        externalLimitUsageAlertFormTemplate.current.emailAddress = internalEmail;
-        externalLimitUsageAlertFormTemplate.current.genericEmail = !isExternal; // for internal email, this flag needs to be true for email to be sent
+        externalLimitUsageAlertFormTemplate.current.genericEmail = !isExternal;
+
         if (isExternal) {
-            externalLimitUsageAlertFormTemplate.current.clientEmailAddress = externalEmail;
+            (externalLimitUsageAlertFormTemplate.current as any).clientEmailAddress = externalEmail;
+        } else {
+            (externalLimitUsageAlertFormTemplate.current as any).clientEmailAddress = '';
         }
+
         if (isTimeBasedRule) {
             externalLimitUsageAlertFormTemplate.current.limitUsageAlertThreshold = null;
-            externalLimitUsageAlertFormTemplate.current.limitUsageAlertTime = limitUsageAlertTime;
-            externalLimitUsageAlertFormTemplate.current.limitUsageAlertTimezone = timezone;
+            (externalLimitUsageAlertFormTemplate.current as any).limitUsageAlertTime = limitUsageAlertTime;
+            (externalLimitUsageAlertFormTemplate.current as any).limitUsageAlertTimezone = timezone;
         } else {
-            externalLimitUsageAlertFormTemplate.current.limitUsageAlertTime = '';
-            externalLimitUsageAlertFormTemplate.current.limitUsageAlertTimezone = '';
+            (externalLimitUsageAlertFormTemplate.current as any).limitUsageAlertTime = '';
+            (externalLimitUsageAlertFormTemplate.current as any).limitUsageAlertTimezone = '';
             externalLimitUsageAlertFormTemplate.current.limitUsageAlertThreshold = limitUsageThresholdStat.current;
         }
     };
@@ -193,6 +215,7 @@ export const LimitUsage = () => {
     const clearForm = (): void => {
         setEmailSubject('');
         setSelectedVenueOptions([]);
+        setSelectedMicFamilyOptions([]);
         setOpAndValue('');
         setAccountIds([]);
         setExternalEmail('');
@@ -208,11 +231,13 @@ export const LimitUsage = () => {
     const onSubmit = (): void => {
         setIsSubmitting(true);
         fillForm();
+
         const isValid: boolean = limitUsageUtil.validateForm(
             externalLimitUsageAlertFormTemplate.current,
             isExternal,
             isTimeBasedRule
         );
+
         if (!isValid) {
             setIsSubmitting(false);
             return;
@@ -220,7 +245,7 @@ export const LimitUsage = () => {
 
         CustomAlertsUtil.createNewAlert(externalLimitUsageAlertFormTemplate.current, true)
             .then((res: any): void => {
-                if (res['status'] && res['status'] < 400) {
+                if (res?.status && res.status < 400) {
                     const msg: string = isExternal
                         ? 'External limit usage rule created. Please refresh grid below to see details.'
                         : 'Internal limit usage rule created. Please go to alert rule browser to view this rule.';
@@ -233,23 +258,21 @@ export const LimitUsage = () => {
                     );
                 }
             })
-            .catch((err): void => {
+            .catch((): void => {
                 NotificationBannerUtil.show(
                     'Unable to create limit usage rule. Please try again or contact support.',
                     NotificationTypes.DANGER,
                     false
                 );
             })
-            .finally((onFinally): void => {
-                /* UNCERTAIN: 图片里是 .finally((onFinally): () void => {，但这是明显不完整/被IDE提示遮挡。
-                   按最保守可运行形式写成如下。若你要严格保留截图异常形态，可改回注释中的写法。 */
+            .finally((): void => {
                 setIsSubmitting(false);
                 clearForm();
             });
     };
 
-    const handleAlertRuleTypeChange = (e): void => {
-        const isTimeBased: boolean = e.target.value == LimitUsageUtil.MARGIN_USAGE_ALERT_TIME_RULE;
+    const handleAlertRuleTypeChange = (e: any): void => {
+        const isTimeBased: boolean = e.target.value === LimitUsageUtil.MARGIN_USAGE_ALERT_TIME_RULE;
         setIsTimeBasedRule(isTimeBased);
         if (isTimeBased) {
             setOpAndValue('');
@@ -268,7 +291,7 @@ export const LimitUsage = () => {
                             % Margin Usage Threshold:
                             <span
                                 className="material-icons tooltip-icon"
-                                title="Enter in Format Operator Followed by Value e.g. &gt;80"
+                                title="Enter in Format Operator Followed by Value e.g. >80"
                             >
                                 info
                             </span>
@@ -294,8 +317,6 @@ export const LimitUsage = () => {
             <>
                 <div className="col-2">
                     <div className="recap-input-field limitusage-input-wrapper">
-                        {/* UNCERTAIN: 其中一张图里 label + tooltip 可见，另一张图里只拍到 Flatpickr。
-                           这里按可见较完整版本保留。 */}
                         <label className="d-flex" htmlFor="alertTime">
                             Time
                             <span
@@ -313,14 +334,16 @@ export const LimitUsage = () => {
                             data-enable-time
                             value={limitUsageAlertTime}
                             options={limitUsageUtil.getTimePickerConfig()}
-                            onChange={(_selectedDateTimes, timeStr) => setLimitUsageAlertTime(timeStr)}
+                            onChange={(_selectedDateTimes: any, timeStr: string) => setLimitUsageAlertTime(timeStr)}
                         />
                     </div>
                 </div>
 
                 <div className="col-2">
                     <div className="recap-input-field limitusage-input-wrapper">
-                        <label className="d-flex" htmlFor="timezone">Timezone:</label>
+                        <label className="d-flex" htmlFor="timezone">
+                            Timezone:
+                        </label>
                         <select
                             name="timezone"
                             id="timezone"
@@ -344,7 +367,6 @@ export const LimitUsage = () => {
                     <a
                         href="https://confluence.work.xx.com/display/EQT/External+Client+Limit+Usage+Alert"
                         target="_blank"
-                        /* UNCERTAIN: 截图未显示 rel 属性，故不添加 */
                     >
                         How-To
                     </a>
@@ -380,34 +402,31 @@ export const LimitUsage = () => {
                                         name="venue"
                                         options={venueOptions}
                                         placeholder={'Select MIC(s)'}
-                                        isDisabled={venueOptions.length === 0}
+                                        isDisabled={venueOptions.length === 0 || selectedMicFamilyOptions.length > 0}
                                         className="limitusage-input-field"
                                         classNamePrefix="limitusage-input-field"
-                                        onChange={setSelectedVenueOptions}
+                                        onChange={handleVenueChange}
                                     />
                                 </fieldset>
                             </div>
                         </div>
 
                         <div className="col-2">
-                            {/*Here is new MicFamily */}
                             <div className="limitusage-input-wrapper">
-                                <fieldset data-testid="venueDropdown">
-                                    <label htmlFor="venue">MIC Family:</label>
+                                <fieldset data-testid="micFamilyDropdown">
+                                    <label htmlFor="micFamily">MIC Family:</label>
                                     <Select
-                                        /* UNCERTAIN: 截图这里明显还是复制 MIC 的旧代码，理论上应使用 selectedMicFamilyOptions / micFamilyOptions / setSelectedMicFamilyOptions
-                                           但你要求按图还原，所以保留截图里看到的值。 */
-                                        value={selectedVenueOptions}
+                                        value={selectedMicFamilyOptions}
                                         isMulti
-                                        inputId="venue"
-                                        id="venue"
-                                        name="venue"
-                                        options={venueOptions}
-                                        placeholder={'Select MIC(s)'}
-                                        isDisabled={venueOptions.length === 0}
+                                        inputId="micFamily"
+                                        id="micFamily"
+                                        name="micFamily"
+                                        options={micFamilyOptions}
+                                        placeholder={'Select MIC Family(s)'}
+                                        isDisabled={micFamilyOptions.length === 0 || selectedVenueOptions.length > 0}
                                         className="limitusage-input-field"
                                         classNamePrefix="limitusage-input-field"
-                                        onChange={setSelectedVenueOptions}
+                                        onChange={handleMicFamilyChange}
                                     />
                                 </fieldset>
                             </div>
@@ -478,3 +497,70 @@ export const LimitUsage = () => {
                             <div className="recap-input-field limitusage-input-wrapper">
                                 <label className="d-flex" htmlFor="internalEmail">
                                     Internal Email:
+                                    <span
+                                        className="material-icons tooltip-icon"
+                                        title="Internal email address must end with '@xx.com'"
+                                    >
+                                        info
+                                    </span>
+                                </label>
+                                <input
+                                    type="email"
+                                    name="internalEmail"
+                                    id="internalEmail"
+                                    onChange={(e) => setInternalEmail(e.target.value)}
+                                    value={internalEmail}
+                                    placeholder="Internal Email"
+                                    className="limitusage-input-field"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="row">
+                        <div className="col-2">
+                            <div className="recap-input-field limitusage-input-wrapper">
+                                <label htmlFor="externalEmail">External Email:</label>
+                                <select
+                                    name="externalEmail"
+                                    id="externalEmail"
+                                    disabled={!isExternal || externalEmailOptions.length === 0}
+                                    onChange={(e) => setExternalEmail(e.target.value)}
+                                    value={externalEmail}
+                                    className="limitusage-input-field"
+                                >
+                                    {limitUsageUtil.getEmailOptions(isExternal, externalEmailOptions)}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="col-1">
+                            <div className="limitusage-input-wrapper external-checkbox-wrapper">
+                                <input
+                                    type="checkbox"
+                                    id="isExternal"
+                                    name="isExternal"
+                                    onChange={onCheckboxChange}
+                                    checked={isExternal}
+                                />
+                                <label htmlFor="isExternal">For External</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="row mt-2">
+                        <div className="col-2">
+                            <button className="btn btn-primary pull-right" onClick={onSubmit} disabled={isSubmitting}>
+                                Create
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <LimitUsageGrid />
+        </>
+    );
+};
+
+export default LimitUsage;
