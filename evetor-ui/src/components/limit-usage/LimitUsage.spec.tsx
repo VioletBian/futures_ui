@@ -79,6 +79,7 @@ describe('Limit Usage Form tests', () => {
 
     // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
 
+    // 增量说明：验证 getFilteredAccountOptions 新增 micFamily 参数位是否已传递。
     it('should call getFilteredAccountOptions with micFamily argument', async () => {
         const optionsSpy = jest.spyOn(LimitUsageUtil.prototype, 'getFilteredAccountOptions')
             .mockReturnValue([] as any);
@@ -93,6 +94,48 @@ describe('Limit Usage Form tests', () => {
         expect(firstCallArgs.length).toBe(5);
         expect(Array.isArray(firstCallArgs[2])).toBeTruthy();
         expect(Array.isArray(firstCallArgs[3])).toBeTruthy();
+    });
+
+    // 增量说明：验证市场维度变化后 accountType 会按实现重置为 GMI。
+    it('should reset account type to GMI after market selection changes', async () => {
+        jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
+            .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
+
+        render(<LimitUsage />);
+
+        const accountTypeSelect = await screen.findByTestId('accountType');
+        fireEvent.change(accountTypeSelect, { target: { value: 'Exchange Account' } });
+        expect((accountTypeSelect as HTMLSelectElement).value).toEqual('Exchange Account');
+
+        const venueInput = document.getElementById('venue') as HTMLInputElement;
+        fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
+        const venueOption = await screen.findByText('XINE');
+        fireEvent.click(venueOption);
+
+        await waitFor(() => {
+            expect((accountTypeSelect as HTMLSelectElement).value).toEqual('GMI');
+        });
+    });
+
+    // 增量说明：验证 MIC 与 MICFamily 互斥时，选择 MIC 会使 MICFamily 进入禁用态。
+    it('should enforce mutual disable between MIC and MIC Family selectors', async () => {
+        jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
+            .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
+        jest.spyOn(LimitUsageUtil.prototype, 'fetchMicFamilyFromWaterfall')
+            .mockResolvedValue([{ value: 'SFX', label: 'SFX' }] as any);
+
+        render(<LimitUsage />);
+
+        const venueInput = document.getElementById('venue') as HTMLInputElement;
+        const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
+
+        fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
+        const venueOption = await screen.findByText('XINE');
+        fireEvent.click(venueOption);
+
+        await waitFor(() => {
+            expect(micFamilyInput.disabled).toBeTruthy();
+        });
     });
 
     it('Should submit form', async () => {
@@ -123,6 +166,7 @@ describe('Limit Usage Form tests', () => {
         });
     });
 
+    // 增量说明：验证 submit 前传入 validateForm 的 payload 同时包含 mic 与 micFamily 字段。
     it('should submit with validateForm payload containing mic and micFamily fields', async () => {
         const validateSpy = jest.spyOn(LimitUsageUtil.prototype, 'validateForm').mockReturnValue(true);
         const createSpy = jest.spyOn(CustomAlertsUtil, 'createNewAlert')
@@ -353,6 +397,7 @@ describe('Limit Usage Form tests', () => {
     });
 
     // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
+    // 增量说明：验证选择 MIC 后会触发互斥效果（MICFamily 禁用）。
     it('should clear MIC Family when MIC is selected', async () => {
         jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
             .mockReturnValue(Promise.resolve([{ value: 'XINE', label: 'XINE' }]));
@@ -366,12 +411,18 @@ describe('Limit Usage Form tests', () => {
             expect(screen.getByTestId('micFamilyDropdown')).toBeTruthy();
         });
 
-        // UNCERTAIN: 图片中该段通过 react-select keyboard/mouse 交互实现，细节不可完全辨认。
-        // 这里保留互斥行为断言：MIC 有值时 MIC Family 下拉应禁用。
+        const venueInput = document.getElementById('venue') as HTMLInputElement;
+        fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
+        const venueOption = await screen.findByText('XINE');
+        fireEvent.click(venueOption);
+
         const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
-        expect(micFamilyInput).toBeTruthy();
+        await waitFor(() => {
+            expect(micFamilyInput.disabled).toBeTruthy();
+        });
     });
 
+    // 增量说明：验证创建请求 payload 中包含 micFamily 字段。
     it('should include micFamily in payload when MIC Family is selected', async () => {
         const createSpy = jest.spyOn(CustomAlertsUtil, 'createNewAlert')
             .mockReturnValue(Promise.resolve({ status: 200 } as any));

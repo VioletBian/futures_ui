@@ -31,7 +31,7 @@ describe('Limit usage util tests', () => {
 
     afterEach(cleanup);
 
-    // ===== 原样转写段落===== 
+    // ===== 原样转写段落 =====
 
     it('should validate init state of form', () => {
         const limitUsageForm: any = limitUsageUtil.initialiseEmptyForm();
@@ -61,9 +61,11 @@ describe('Limit usage util tests', () => {
         venue = ['XINE', 'XNSE'];
         expect(limitUsageUtil.hasOnlyChinaMics(venue)).toBeFalsy();
 
+        // 回补图片原样断言：非中国 MIC
         venue = ['XNSE'];
         expect(limitUsageUtil.hasOnlyChinaMics(venue)).toBeFalsy();
 
+        // 回补图片原样断言：纯非中国 MIC 组合
         venue = ['XNSE', 'XKFE'];
         expect(limitUsageUtil.hasOnlyChinaMics(venue)).toBeFalsy();
     });
@@ -76,6 +78,7 @@ describe('Limit usage util tests', () => {
         expect(limitUsageUtil.hasOnlyNonChinaMics(venue)).toBeFalsy();
 
         venue = ['XNSE', 'XSGE'];
+
         expect(limitUsageUtil.hasOnlyNonChinaMics(venue)).toBeFalsy();
 
         venue = ['XNSE', 'XKFE'];
@@ -86,12 +89,20 @@ describe('Limit usage util tests', () => {
 
         venue = ['XNSE', 'XKFE'];
         expect(limitUsageUtil.hasOnlyNonChinaMics(venue)).toBeTruthy();
+
+        // 回补图片原样断言：混合中国与非中国 MIC 不是 only non-china
+        venue = ['XINE', 'XNSE'];
+        expect(limitUsageUtil.hasOnlyNonChinaMics(venue)).toBeFalsy();
     });
 
-    // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
+    it('should reject when waterfall uri is missing - venues', async () => {
+        limitUsageUtil.waterfallUri = '';
+        await expect(limitUsageUtil.fetchVenuesFromWaterfall()).rejects.toEqual('No Waterfall uri found in config.');
+    });
 
-    it('test micFamily china/non-china/mixed selectors', () => {
-        expect(limitUsageUtil.hasOnlyChinaMicFamilies([])).toBeFalsy();
+    it('should reject when waterfall uri is missing - mic families', async () => {
+        limitUsageUtil.waterfallUri = '';
+        await expect(limitUsageUtil.fetchMicFamilyFromWaterfall()).rejects.toEqual('No Waterfall uri found in config.');
         expect(limitUsageUtil.hasOnlyChinaMicFamilies(['SFX'] as any)).toBeTruthy();
         expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['SFX'] as any)).toBeFalsy();
         expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['NON_CHINA'] as any)).toBeTruthy();
@@ -156,6 +167,7 @@ describe('Limit usage util tests', () => {
         expect(limitUsageUtil.validateForm(formWithMixedVenue, true, false)).toBeFalsy();
     });
 
+    // 回补图片原样测试：阈值格式错误
     it('should validate form - invalid limitUsageAlertThreshold', async () => {
         const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
         const formWithInvalidThreshold = {
@@ -171,6 +183,21 @@ describe('Limit usage util tests', () => {
                 false
             );
         });
+    });
+
+    // 增量回补：覆盖图片中的阈值边界校验意图（1 <= value <= 100）
+    it('should validate form - limitUsageAlertThreshold range boundary', () => {
+        const formAtLowerBound = {
+            ...goodForm,
+            limitUsageAlertThreshold: { operator: '>', value: 1 }
+        };
+        const formAtUpperBound = {
+            ...goodForm,
+            limitUsageAlertThreshold: { operator: '>', value: 100 }
+        };
+
+        expect(limitUsageUtil.validateForm(formAtLowerBound, true, false)).toBeTruthy();
+        expect(limitUsageUtil.validateForm(formAtUpperBound, true, false)).toBeTruthy();
     });
 
     it('should validate form - time based - invalid alert time', async () => {
@@ -191,7 +218,7 @@ describe('Limit usage util tests', () => {
 
         expect(limitUsageUtil.validateForm(formWithInvalidThreshold, true, true)).toBeFalsy();
     });
-
+    // 回补图片原样测试：time-based 缺少 timezone
     it('should validate form - time based - invalid alert timezone', async () => {
         const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
         const formWithInvalidThreshold = {
@@ -211,6 +238,7 @@ describe('Limit usage util tests', () => {
         expect(limitUsageUtil.validateForm(formWithInvalidThreshold, true, true)).toBeFalsy();
     });
 
+    // 回补图片原样测试：non-time-based 下 alert time 可为空
     it('should validate form - non-time based - invalid alert time', () => {
         const formWithInvalidThreshold = {
             ...goodForm,
@@ -219,6 +247,7 @@ describe('Limit usage util tests', () => {
         expect(limitUsageUtil.validateForm(formWithInvalidThreshold, true, false)).toBeTruthy();
     });
 
+    // 回补图片原样测试：non-time-based 下 timezone 可为空
     it('should validate form - non-time based - invalid alert timezone', () => {
         const formWithInvalidThreshold = {
             ...goodForm,
@@ -226,7 +255,9 @@ describe('Limit usage util tests', () => {
         };
         expect(limitUsageUtil.validateForm(formWithInvalidThreshold, true, false)).toBeTruthy();
     });
+    
 
+    // 回补图片原样测试：空表单缺失字段提示    
     it('should validate form - non-time based and empty fields', async () => {
         const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
         const formWithEmptyFields = {
@@ -246,57 +277,136 @@ describe('Limit usage util tests', () => {
 
     // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
 
+    // 增量说明：覆盖新增的 MICFamily selector 相关工具函数分支
+
+    it('test micFamily china/non-china/mixed selectors', () => {
+        expect(limitUsageUtil.hasOnlyChinaMicFamilies([])).toBeFalsy();
+        expect(limitUsageUtil.hasOnlyChinaMicFamilies(['SFX'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['SFX'] as any)).toBeFalsy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['NON_CHINA'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasMixedMicFamilies(['SFX', 'NON_CHINA'] as any)).toBeTruthy();
+    });
+
+    it('test hasOnlyChinaSelections/hasOnlyNonChinaSelections/hasMixedSelections', () => {
+        expect(limitUsageUtil.hasOnlyChinaSelections(['XINE'], [])).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaSelections([], ['SFX'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections(['XNSE'], [])).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections([], ['NON_CHINA'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasMixedSelections(['XINE'], ['SFX'] as any)).toBeTruthy();
+    });
+
+    it('should validate form - both MIC and MIC Family selected (mutual exclusion)', () => {
+        const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
+        const form = {
+            ...goodForm,
+            venue: ['XINE'],
+            micFamily: ['SFX']
+        };
+
+        expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
+        expect(notificationSpy).toHaveBeenCalledWith(
+            'MIC and MIC Family are mutually exclusive. Please select only one.',
+            NotificationTypes.WARNING,
+            false
+        );
+    });
+
+    it('should validate form - micFamily only path (china/non-china mixed is invalid)', () => {
+        const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
+        const form = {
+            ...goodForm,
+            venue: [],
+            micFamily: ['SFX', 'NON_CHINA_FAMILY']
+        };
+
+        expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
+        expect(notificationSpy).toHaveBeenCalledWith(
+            'Please do not enter a mixture of China and Non-China MIC Families.',
+            NotificationTypes.WARNING,
+            false
+        );
+    });
+
+    it('should validate form - invalid micFamily selected', () => {
+        const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
+        const form = {
+            ...goodForm,
+            venue: [],
+            micFamily: ['']
+        };
+
+        expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
+        expect(notificationSpy).toHaveBeenCalledWith(
+            'Invalid MIC Family selected.',
+            NotificationTypes.WARNING,
+            false
+        );
+    });
+
+
     it('should get china exchange accounts', async () => {
         jest.mock('axios', () => ({ get: jest.fn() }));
         const getSpy = jest.spyOn(axios, 'get').mockReturnValue(Promise.resolve({ data: [] }));
 
-        limitUsageUtil.getChinaAccounts(LimitUsageUtil.EXCHANGE_ACCOUNT).then(() => {
-            expect(getSpy).toHaveBeenCalledWith(
-                'http://margin.mock.api.cn.qa.futures.nimbus.xx.com/rest/margincontrol/cn_offshore/accountList/exchangeaccount',
-                { withCredentials: true, responseType: 'json' as 'json' }
-            );
-        });
+        // 增量说明：修复假通过，使用 await 确保断言在异步完成后执行
+        await limitUsageUtil.getChinaAccounts(LimitUsageUtil.EXCHANGE_ACCOUNT);
+        expect(getSpy).toHaveBeenCalledWith(
+            'http://margin.mock.api.cn.qa.futures.nimbus.xx.com/rest/margincontrol/cn_offshore/accountList/exchangeaccount',
+            { withCredentials: true, responseType: 'json' as 'json' }
+        );
     });
 
     it('should get client setting email to account mappings', async () => {
         jest.mock('axios', () => ({ get: jest.fn() }));
         const getSpy = jest.spyOn(axios, 'get').mockReturnValue(Promise.resolve({ data: [] }));
 
-        limitUsageUtil.getAllAccountToEmailMappings().then(() => {
-            expect(getSpy).toHaveBeenCalledWith(
-                'www.recap-service.com/rest/clientsettings/cache/limitusage/accounts/all',
-                { withCredentials: true, responseType: 'json' as 'json' }
-            );
-        });
+        // 增量说明：修复假通过，使用 await 确保断言有效
+        await limitUsageUtil.getAllAccountToEmailMappings();
+        expect(getSpy).toHaveBeenCalledWith(
+            'www.recap-service.com/rest/clientsettings/cache/limitusage/accounts/all',
+            { withCredentials: true, responseType: 'json' as 'json' }
+        );
     });
 
     it('should get MIC enums from waterfall', async () => {
         jest.mock('axios', () => ({ get: jest.fn() }));
         const getSpy = jest.spyOn(axios, 'get').mockResolvedValueOnce({ data: { mic: ['XINE'] } });
 
-        limitUsageUtil.fetchVenuesFromWaterfall().then((res) => {
-            expect(getSpy).toHaveBeenCalledWith('www.waterfallservice.xx.com/rest/search/enums', {
-                withCredentials: true,
-                responseType: 'json' as 'json'
-            });
-            expect(res).toEqual(expect.arrayContaining([{ value: 'XINE', label: 'XINE' }]));
+        // 增量说明：修复假通过，改为 await 获取返回结果
+        const res = await limitUsageUtil.fetchVenuesFromWaterfall();
+        expect(getSpy).toHaveBeenCalledWith('www.waterfallservice.xx.com/rest/search/enums', {
+            withCredentials: true,
+            responseType: 'json' as 'json'
         });
+        expect(res).toEqual(expect.arrayContaining([{ value: 'XINE', label: 'XINE' }]));
     });
 
     it('should get MIC Family enums from waterfall', async () => {
         jest.mock('axios', () => ({ get: jest.fn() }));
         const getSpy = jest.spyOn(axios, 'get').mockResolvedValueOnce({ data: { micFamily: ['SFX', 'NON_CHINA'] } });
 
-        limitUsageUtil.fetchMicFamilyFromWaterfall().then((res) => {
-            expect(getSpy).toHaveBeenCalledWith('www.waterfallservice.xx.com/rest/search/enums', {
-                withCredentials: true,
-                responseType: 'json' as 'json'
-            });
-            expect(res).toEqual([
-                { value: 'NON_CHINA', label: 'NON_CHINA' },
-                { value: 'SFX', label: 'SFX' }
-            ]);
+        // 增量说明：修复假通过，改为 await 获取返回结果
+        const res = await limitUsageUtil.fetchMicFamilyFromWaterfall();
+        expect(getSpy).toHaveBeenCalledWith('www.waterfallservice.xx.com/rest/search/enums', {
+            withCredentials: true,
+            responseType: 'json' as 'json'
         });
+        expect(res).toEqual([
+            { value: 'NON_CHINA', label: 'NON_CHINA' },
+            { value: 'SFX', label: 'SFX' }
+        ]);
+    });
+
+     it('should reject when waterfall uri is missing - venues', async () => {
+        // 增量说明：覆盖配置缺失时的 reject 分支
+        limitUsageUtil.waterfallUri = '';
+        await expect(limitUsageUtil.fetchVenuesFromWaterfall()).rejects.toEqual('No Waterfall uri found in config.');
+    });
+
+    it('should reject when waterfall uri is missing - mic families', async () => {
+        // 增量说明：覆盖 MICFamily 枚举接口在配置缺失时的 reject 分支
+        limitUsageUtil.waterfallUri = '';
+        await expect(limitUsageUtil.fetchMicFamilyFromWaterfall()).rejects.toEqual('No Waterfall uri found in config.');
     });
 
     // ===== 原样转写段落 ===== 
@@ -337,6 +447,7 @@ describe('Limit usage util tests', () => {
         });
     });
 
+    // 回补图片原样测试：账户筛选列表场景
     describe('getAccountOptionsFromAccountList', () => {
         const accountToEmailMappings: any = {
             '55300833': 'kabeer.krishnags.com,yiying.li@xx.com',
@@ -415,7 +526,7 @@ describe('Limit usage util tests', () => {
         });
     });
 
-    describe('showNotificationBannerForEmptyChinaAccounts', () => {
+        describe('showNotificationBannerForEmptyChinaAccounts', () => {
         it('empty GMI and exchange accounts', () => {
             const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
             const chinaAccounts = { gmiAccounts: [], exchangeAccounts: [] };
@@ -432,6 +543,35 @@ describe('Limit usage util tests', () => {
             const chinaAccounts = { gmiAccounts: ['123'], exchangeAccounts: ['456'] };
             limitUsageUtil.showNotificationBannerForEmptyChinaAccounts(chinaAccounts);
             expect(notificationSpy).not.toHaveBeenCalled();
+
+        // 增量回补：无市场选择时不应返回账号（与图片原样行为保持一致）
+        it('should get all account options when no market selections', () => {
+            const actual = limitUsageUtil.getFilteredAccountOptions(
+                accountToEmailMappings,
+                allChinaAccounts,
+                [],
+                [],
+                AccountType.GMI_ACCOUNT
+            );
+
+            expect(actual).toEqual([]);
+        });
+
+        // 增量回补：有市场选择时应返回对应过滤后的账号
+        it('should get account options by market selections', () => {
+            const actual = limitUsageUtil.getFilteredAccountOptions(
+                accountToEmailMappings,
+                allChinaAccounts,
+                [{ value: 'XINE', label: 'XINE' }],
+                [],
+                AccountType.GMI_ACCOUNT
+            );
+
+            expect(actual).toEqual([
+                { value: 'IN03456', label: 'IN03456' },
+                { value: 'DCI03456', label: 'DCI03456' },
+                { value: 'ZCI03456', label: 'ZCI03456' }
+            ]);
         });
     });
 
