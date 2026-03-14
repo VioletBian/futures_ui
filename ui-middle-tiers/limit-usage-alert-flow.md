@@ -1,320 +1,339 @@
 # LimitUsage Alert 链路梳理
 
-本文只基于当前已落地代码、`directory_structure`、以及你后续补拍的 `round1/round2/round3` 代码图整理。
+本文基于以下可信来源整理：
+
+1. `directory_structure`
+2. 你补拍的近距离代码图
+3. 你从完整公司代码库里通过 `find usage` / 跳转关系确认后再传回来的信息
+4. 当前工作区中已重建并复核过的代码
+
+不再使用早期错误转录或低可信分析 md 作为事实依据。
+
+## 类流图
+
+```mermaid
+flowchart LR
+    ES["ES / Alert 配置"] --> ARC["AlertRuleConsumer"]
+    ES --> CAP["CustomAlertsPollingThread"]
+
+    ARC --> CACHE["AlertRuleCache"]
+    CAP --> CACHE
+
+    ARC --> LUS["LimitUsageAlertSource.processNewAlertRule(rule)"]
+    CAP --> LUS
+
+    LU["ClearingData.LimitUsage"] --> LUL["LimitUsageLoader"]
+    LUL --> LUA["LimitUsageApi (/limitusage/*)"]
+    LU --> AEC["LimitUsageAlertEngineConsumer"]
+
+    AEC --> FAE["FastAlertEngine.process(limitUsage)"]
+    FAE --> AG["AlertGenerator"]
+    AG --> LUS
+    LUS --> LUR["LimitUsageRule"]
+    LUA -. "定时拉取快照" .-> LUS
+
+    LUR --> UA["UnpublishedAlert / LimitUsageAlert"]
+    UA --> FAE
+    FAE --> CA["Coverage.Alert"]
+
+    CA --> LUF["LimitUsageAlertFilter / Processor / Validation"]
+    LUF --> LUC["LimitUsageAlertConsumer"]
+    LUC --> CSD["ConfigServerDao -> AlertRule"]
+    LUC --> NOTIFY["Email / Symphony / External Recap"]
+```
 
 ## 当前结论
 
-就“梳理 LimitUsage 相关 Alert 的整条数据流和逻辑链”这个目标来说，当前代码条件已经够用了，可以形成一条相对稳定的主链路。
+现在已经可以把 `LimitUsage Alert` 的主链路说清楚，而且关键上游入口已经从“猜测”变成“已确认”：
 
-但如果目标升级为“所有相关类 1:1 精确转写”，现在还不算完全收敛，主要缺口集中在：
+- 规则不是前端直接推到 `LimitUsageAlertSource`
+- `AlertRule` 会先进入 `AlertRuleConsumer`
+- 启动或轮询补数时，`CustomAlertsPollingThread` 也会把规则重新灌进 `LimitUsageAlertSource`
+- `LimitUsageAlertSource.processNewAlertRule(...)` 负责把原始 `AlertRule` 变成运行态 limit usage 规则
+- 实时 `ClearingData.LimitUsage` 再进入 engine，与这些运行态规则匹配
+- 命中后才生成并发布 `LimitUsageAlert`
 
-- `AlertRule` 尾部未拍全的 getter/setter、builder 尾段
-- `LimitUsageAlertConsumer`
-- `LimitUsageAlertAckingConsumer`
-- `ConfigServerDao`
-- `AlertPublisher` 或下游发布目标类
-- 前端/配置侧把 `AlertRule` 写入并刷新到 `aviator-dra` 的那段入口代码
+所以你提的那个疑问，现在可以更明确地回答：
 
-也就是说：
-
-- 业务链路已经足够完整，可以写 flow 文档。
-- 源码级 1:1 复现还存在局部缺口，尤其是 model 尾部和通知侧若干类。
-
-## 资料可信级别
-
-本次判断采用的可信级别顺序如下：
-
-1. `directory_structure`
-2. 近距离单类代码图
-3. 同目录下其他已确认类之间的直接调用关系
-4. 当前工作区里已重建代码
-
-像旧的分析 md、早期错误转录、或者仅凭命名推断的内容，本次都没有作为事实依据。
+- 是的，信息流入后不是“直接发 alert”
+- 而是先把 `AlertRule` 装载进 `LimitUsageAlertSource`
+- 再由运行态规则实例去校验实时数据或定时拉取的快照
+- 只有规则命中时才会生成 alert 并进入通知链路
 
 ## 模块职责
 
-从当前目录结构和代码看，LimitUsage Alert 至少跨了这几个模块：
+从当前已确认代码看，LimitUsage Alert 至少跨以下模块：
 
 - `recap-server/limitusageloaderserver`
-  负责订阅 `ClearingData.LimitUsage`、做本地缓存、对外提供查询接口。
+  负责消费 `ClearingData.LimitUsage`、维护快照缓存、提供查询接口。
 - `aviator-dra`
-  负责接收 limit usage 数据、持有运行中规则、在主 alert engine 内生成 LimitUsageAlert。
+  负责接收规则、持有运行态规则、接收实时 limit usage、生成 alert。
 - `recap-server/limitusageserver`
-  负责消费生成后的 `Coverage.Alert`，回查 `AlertRule`，然后发邮件、Symphony 等通知。
+  负责消费生成后的 `Coverage.Alert`，回查 `AlertRule` 并触发通知。
 - `recap-server/recapserver`
-  当前能确认它提供了 `ConfigServerDao`，负责通过 HTTP 回查 `AlertRule`。
+  当前能确认提供 `ConfigServerDao`，用于回查 `AlertRule`。
 - `model/alert-rule`
-  当前已补出 `AlertRule` 的可见字段段和调用必需的 bean getter；尾部仍不是完整 1:1。
+  提供 `AlertRule` 定义；当前工作区版本已足以支撑链路分析和调用，但尾部 getter/setter/builder 仍非完整 1:1。
 
-## 主链路
+## 规则是如何进入 aviator-dra 的
 
-### 1. Limit usage 数据进入系统
+这部分现在已经有 solid source。
 
-来自 [LimitUsageLoader.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageloaderserver/loader/LimitUsageLoader.java)：
+### 1. AlertRuleConsumer 是规则变更入口
 
-- `LimitUsageLoader` 实现了 `DataConsumer<ClearingData.LimitUsage>`。
-- `consume(...)` 直接调用 `updateCache(...)`。
-- `configureAndStartKafkaSubscription()` 负责做 hydration，然后启动 Kafka subscriber。
-- `updateCache(...)` 会把 limit usage 按两种 key 缓存：
-  - `clientRefId`
-  - 第一条 GMI account synonym
+根据你提供的 `find usage` 调用图，`LimitUsageAlertSource.processNewAlertRule(...)` 的直接调用方之一是 `AlertRuleConsumer`。
 
-这意味着 loader 侧维护的是“当前最新 limit usage 快照缓存”，而不是简单透传。
+从图中可以确认：
 
-### 2. loader server 对外提供 limit usage 查询
+- `AlertRuleConsumer` 实现 `DataConsumer<Coverage.NotificationAlert>`
+- 它持有：
+  - `AlertRuleSource source`
+  - `AlertRuleCache alertRulesCache`
+  - `CustomAlertSource customAlertSource`
+  - `LimitUsageAlertSource limitUsageAlertSource`
+- `consume(Coverage.NotificationAlert dataToConsume)` 中：
+  - 先判断 `NotificationType == AlertRule`
+  - 再从 `notificationContent` 反序列化出 `AlertRule`
+  - 如果 `rule.getSoftDelete()` 为真：
+    - 从 `alertRulesCache` 删除
+    - 调用 `customAlertSource.processRemoveAlertRule(rule)`
+    - 调用 `limitUsageAlertSource.processRemoveAlertRule(rule)`
+  - 否则：
+    - 先把规则加入 `alertRulesCache`
+    - 再调用 `customAlertSource.processNewAlertRule(rule)`
+    - 再调用 `limitUsageAlertSource.processNewAlertRule(rule)`
 
-来自 [LimitUsageApi.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageloaderserver/rest/LimitUsageApi.java)：
+这说明：
 
-- 暴露了三类查询：
-  - 全量 `/all`
-  - 单账户 `/account`
-  - 多账户 `/accounts`
-- 所有查询最终都回到 `LimitUsageLoader` 的缓存。
+- `AlertRuleConsumer` 接的是规则变更消息流
+- 它把原始 `AlertRule` 同步到 cache
+- 再把规则推给各个具体 alert source，包括 `LimitUsageAlertSource`
 
-来自 [LimitUsageLoaderServer.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageloaderserver/server/LimitUsageLoaderServer.java)：
+### 2. CustomAlertsPollingThread 是启动/补偿入口
 
-- 服务启动后会初始化 `LimitUsageLoader`
-- 然后执行 `configureAndStartKafkaSubscription()`
+你提供的第二张图确认了另一个调用方：`CustomAlertsPollingThread`。
 
-所以这一段的职责很清晰：
+从图中可以确认：
 
-- 一边持续吃 limit usage 数据
-- 一边通过 REST 暴露最新快照
+- 它持有：
+  - `IElasticSearchDao elasticSearchDao`
+  - `AlertRuleCache alertRulesCache`
+  - `CustomAlertSource customAlertSource`
+  - `LimitUsageAlertSource limitUsageAlertSource`
+  - `AlertRuleGenerator alertRuleGenerator`
+- `run()` 里会：
+  - 先从 `elasticSearchDao.getAll(...)` 拉规则集合
+  - 如果有 `alertRuleGenerator`，还会拿 `defaultRules()`
+  - 把这些规则都放进 `alertRulesCache`
+  - 然后对每条规则分别调用：
+    - `customAlertSource.processNewAlertRule(rule)`
+    - `limitUsageAlertSource.processNewAlertRule(rule)`
 
-### 3. aviator-dra 把 LimitUsage 接进主 alert engine
+所以这条链路的作用不是“实时规则变更通知”，而更像：
 
-来自 [AlertGeneratorModule.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/guice/AlertGeneratorModule.java)：
+- 启动时全量装载
+- 轮询或补偿式重灌
 
-- `LimitUsageAlertSource` 会在 `processLimitUsageAlert` 打开时被注册为 `AlertGeneratorSource`
-- `LimitUsageAlertEngineConsumer` 也会在同一开关下被绑定
-- `AlertEngine` 绑定到 `FastAlertEngine`
-
-这个 wiring 很关键，说明：
-
-- LimitUsage 不是一个独立旁路服务
-- 它是直接挂进 `aviator-dra` 主 alert engine 的
-
-### 4. event-driven 入口已经确认
-
-来自 [AlertEngineConsumer.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/alertengineconsumer/AlertEngineConsumer.java) 和 [LimitUsageAlertEngineConsumer.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/alertengineconsumer/LimitUsageAlertEngineConsumer.java)：
-
-- `AlertEngineConsumer` 是 `DataConsumer<Object>`
-- `LimitUsageAlertEngineConsumer.consume(Object)` 会判断输入是不是 `ClearingData.LimitUsage`
-- 如果是，就调用 `alertEngine.process(limitUsage)`
-- `setLiveMode()` 直接转发到 `alertEngine.setLiveMode()`
-
-这段现在已经不是推断，而是直接确认了：
-
-- 实时 limit usage 数据会通过 `LimitUsageAlertEngineConsumer`
-- 直接进入 `FastAlertEngine.process(ClearingData.LimitUsage)`
-
-### 5. 规则在 LimitUsageAlertSource 中被持有和分流
+## 规则进入 LimitUsageAlertSource 之后做什么
 
 来自 [LimitUsageAlertSource.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/sources/LimitUsageAlertSource.java)：
 
-- 运行态规则分成两类：
+- `processNewAlertRule(AlertRule)` 会先过滤无效输入
+- 然后判断是否是 `limit usage rule`
+- 再做权限/entitlement 检查
+- 再移除旧版本同 id 规则
+- 最后按类型放入：
   - `thresholdRules`
   - `scheduledRules`
-- `processNewAlertRule(AlertRule)` 会：
-  - 先做旧版本移除
-  - 再判断是否为 limit usage rule
-  - 再做权限/entitlement 检查
-  - 最后根据规则类型进入 threshold 或 time-based 路径
 
-这说明前端或配置侧落下来的 `AlertRule`，到了 `aviator-dra` 后会被转成运行时的 `LimitUsageRule`。
+所以 `LimitUsageAlertSource` 并不是简单缓存原始 `AlertRule`，而是在做“规则接入、筛选、运行态分流”。
 
-### 6. threshold 路径
+## 实时数据是如何命中这些规则的
 
-来自 [LimitUsageRule.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/rules/LimitUsageRule.java)：
+### 1. 实时 limit usage 进入 engine
 
-- 每条运行时规则持有：
-  - `AlertRule`
-  - `Common.Application`
-  - `ActiveAlerts`
-- 核心判断至少包括：
-  - 当前 alert 是否已在 `activeAlerts` 中存在
-  - venue 是否命中
-  - account 是否命中
-  - threshold operator/value 是否 breach
+来自 [LimitUsageAlertEngineConsumer.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/alertengineconsumer/LimitUsageAlertEngineConsumer.java)：
 
-当前已确认的 account 命中逻辑是：
+- 当输入对象是 `ClearingData.LimitUsage`
+- 就调用 `alertEngine.process(limitUsage)`
 
-- 既看 `clientRefId`
-- 也看 GMI synonym
-
-当前已确认的 alert id 构造逻辑里包含：
-
-- `clientRefId`
-- `GMI`
-- `ruleVersion`
-- `ruleId`
-
-所以同一账户在规则版本升级后，可以重新形成新 alert。
-
-### 7. time-based 路径
-
-来自 [LimitUsageAlertSource.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/sources/LimitUsageAlertSource.java)：
-
-- `scheduleTimeBasedRule(...)` 会在指定时刻触发
-- 触发时通过 `/limitusage/accounts` 拉当前快照
-- 然后生成 time-based 的 limit usage alert
-
-所以 time-based 规则不是等实时事件自然撞上，而是：
-
-- 到点后主动拉 snapshot
-- 再基于 snapshot 做一次规则判断
-
-### 8. 统一通过 FastAlertEngine 出 alert
+### 2. FastAlertEngine 把数据交给 alert source
 
 来自 [FastAlertEngine.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/FastAlertEngine.java)：
 
-- `process(ClearingData.LimitUsage)` 会走 `generateNewAlerts(limitUsage)`
-- `processUnpublishedAlerts(...)` 会把结果分成：
-  - `ImmediateAlert`
-  - `TimePendingAlert`
-- `raiseActiveAlert(...)` 对 `LimitUsageAlert` 会走 `activeAlerts.addLimitUsageAlert(alert)`
+- `process(ClearingData.LimitUsage)` 会调用 `generateNewAlerts(limitUsage)`
+- 进一步委托给 `alertGenerator.generateNewAlerts(limitUsage)`
 
-再结合 [AlertEngineTicker.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/AlertEngineTicker.java)：
+### 3. LimitUsageAlertSource 遍历运行态规则
 
-- engine ticker 每秒调用一次 `checkTimePendingAlerts()`
+来自 [LimitUsageAlertSource.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/sources/LimitUsageAlertSource.java)：
 
-因此可以确认：
+- 实时路径会遍历 `thresholdRules`
+- 定时路径会在触发时拉 `/limitusage/accounts` 的最新快照
+- 然后基于对应规则生成 alert
 
-- LimitUsageAlert 最终还是走统一 engine
-- 不是在外面自己维护一套独立调度器
+### 4. LimitUsageRule 做真正的命中判断
 
-### 9. 生成后的 alert 在通知侧再次过滤、处理、校验
+来自 [LimitUsageRule.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/rules/LimitUsageRule.java)：
 
-当前直接拍到并可确认的通知侧基础类有：
+- 它持有：
+  - `AlertRule`
+  - `Common.Application`
+  - `ActiveAlerts`
+- 它负责判断：
+  - venue 是否命中
+  - account 是否命中
+  - threshold 是否 breach
+  - 当前是否已有 active alert
+
+当前已确认的 account 维度包含：
+
+- `clientRefId`
+- GMI synonym
+
+因此这里不是“原始数据一进来就直接发 alert”，而是：
+
+1. 先有运行态规则
+2. 再让实时数据去撞这些规则
+3. 命中后返回 `ImmediateAlert` 或其他 unpublished alert
+
+## time-based 规则链路
+
+来自 [LimitUsageAlertSource.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/aviator-dra/src/main/java/com/xx/futures/evetor/alert/generator/sources/LimitUsageAlertSource.java)：
+
+- time-based 规则进入 `scheduledRules`
+- 到点后不是等实时消息，而是主动拉 `/limitusage/accounts`
+- 用拉回来的 snapshot 做一次规则计算
+
+这说明 threshold 与 time-based 的核心差别是：
+
+- threshold：实时消息驱动
+- time-based：定时 snapshot 驱动
+
+## limit usage 数据来源
+
+来自 [LimitUsageLoader.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageloaderserver/loader/LimitUsageLoader.java)：
+
+- `LimitUsageLoader` 消费 `ClearingData.LimitUsage`
+- 更新本地 cache
+- key 主要是：
+  - `clientRefId`
+  - GMI synonym
+
+来自 [LimitUsageApi.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageloaderserver/rest/LimitUsageApi.java)：
+
+- 对外暴露 `/all`、`/account`、`/accounts`
+
+因此 `aviator-dra` 的 time-based 规则依赖的是 loader server 上的 limit usage 快照，而不是直接访问 ES。
+
+## alert 生成后如何通知
+
+这段你已经确认相关类和事实一致，可以作为可信链路保留。
+
+### 1. 通知侧基础处理
+
+已确认类：
 
 - [LimitUsageAlertFilter.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageserver/alerts/LimitUsageAlertFilter.java)
 - [LimitUsageAlertProcessor.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageserver/alerts/LimitUsageAlertProcessor.java)
 - [LimitUsageAlertRuleValidation.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageserver/alerts/LimitUsageAlertRuleValidation.java)
 
-可确认逻辑：
+职责分别是：
 
-- `LimitUsageAlertFilter.shouldBeProcessed(...)`
-  - 只放行 `AlertType.LimitUsage`
-  - 且按 `alertIdSet` 去重
-- `LimitUsageAlertProcessor.process(...)`
-  - 直接把 `GeneratedMessage` cast 成 `Coverage.Alert`
-- `LimitUsageAlertRuleValidation`
-  - 校验 generic email 是否该发
-  - 校验 symphony 是否该发
-  - 校验 symphony room 是否该发
-  - 校验 alertId 与 ruleId、message 与 rule.message 是否一致
+- filter：只放行 `LimitUsageAlert` 且做 alertId 去重
+- processor：把消息转成 `Coverage.Alert`
+- validation：决定 generic email / symphony / room message 是否该发
 
-这里要注意一点：
-
-- `LimitUsageAlertRuleValidation` 这次补拍确认了类名就是带 `Rule` 的版本
-- 之前 workspace 里的 `LimitUsageAlertValidation` 是旧的错误命名，已修正
-
-### 10. 通知侧消费 alert 并回查 AlertRule
+### 2. 回查 AlertRule 后决定通知方式
 
 来自 [LimitUsageAlertConsumer.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/limitusageserver/alerts/LimitUsageAlertConsumer.java) 和 [ConfigServerDao.java](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/ui-middle-tier-services/recap-server/src/main/java/com/xx/futures/evetor/recapserver/dao/ConfigServerDao.java)：
 
-- `LimitUsageAlertConsumer` 收到的是 `Coverage.Alert`
-- 它会先从 alert id 反推出 `alertRuleId`
-- 然后通过 `ElasticUtils.getElasticDocument(..., alertRuleCache, configServerDao)` 回查 `AlertRule`
-- 再根据 `AlertRule` 的通知配置走：
+- 消费到 `Coverage.Alert` 后
+- 先从 alertId 反推 ruleId
+- 再通过 `configServerDao` 回查 `AlertRule`
+- 再根据 `AlertRule` 配置决定发：
   - external client email
   - generic email
   - symphony room
   - symphony team room
 
-来自 `ConfigServerDao`：
+根据你从完整公司代码库里做的调用关系确认：
 
-- 通过 HTTP 从 config/elasticsearch 风格接口回查 `AlertRule`
+- `ConfigServerDao.getAlertRuleById(...)` 的上游最终能落到一个大的 endpoint 提供类 `AlertsRestBase`
+- 其中存在 `/rules`、`/rule`、`/rule/{id}` 等与 `AlertRule` 相关的 endpoint
+- 这些 endpoint 会调用 `elasticSearchDao.getXX(...)`
 
-所以通知侧不是只靠 alert payload 自己发，而是会重新拉一遍规则配置。
+所以通知侧依赖的是“alert + 回查 rule 配置”的组合，而不是只靠 alert 本体。
+对当前线程来说，这条关系已经足够，不需要继续转写 `AlertsRestBase` 整个大类。
 
-## 一条相对完整的链路
+## 当前可以稳定确认的完整主链路
 
-当前可以把主链路收敛成下面这 10 步：
+现在可以把主链路更准确地写成下面这 12 步：
 
-1. `limitusageloaderserver` 消费 `ClearingData.LimitUsage`
-2. `LimitUsageLoader` 按 `clientRefId` / GMI synonym 更新内存缓存
-3. `LimitUsageApi` 暴露缓存查询接口
-4. `AlertGeneratorModule` 把 `LimitUsageAlertSource` 和 `LimitUsageAlertEngineConsumer` 接入主 engine
-5. 实时 limit usage 通过 `LimitUsageAlertEngineConsumer` 进入 `FastAlertEngine`
-6. `LimitUsageAlertSource` 持有运行中规则，并把规则分成 threshold/time-based 两条路径
-7. `LimitUsageRule` 对实时数据或定时拉取的 snapshot 做命中判断
-8. `FastAlertEngine` 生成 `ImmediateAlert` / `TimePendingAlert`，并把 LimitUsageAlert 纳入 `activeAlerts`
-9. `limitusageserver` 侧对 `Coverage.Alert` 做 filter/process/validation
-10. `LimitUsageAlertConsumer` 回查 `AlertRule` 后发通知
+1. 前端侧创建好的 alert 规则最终表现为 ES / alert 配置中的 `AlertRule`
+2. 规则变更消息进入 `AlertRuleConsumer`
+3. `AlertRuleConsumer` 反序列化出 `AlertRule`
+4. `AlertRuleConsumer` 把规则写入 `AlertRuleCache`
+5. `AlertRuleConsumer` 调用 `LimitUsageAlertSource.processNewAlertRule(rule)` 或 `processRemoveAlertRule(rule)`
+6. 启动/轮询补偿时，`CustomAlertsPollingThread` 也会批量把 ES / generated rules 灌入 `LimitUsageAlertSource`
+7. `LimitUsageAlertSource` 对原始 `AlertRule` 做 limit usage 规则识别、权限检查、旧版本替换、threshold/time-based 分流
+8. 实时 `ClearingData.LimitUsage` 通过 `LimitUsageAlertEngineConsumer -> FastAlertEngine` 进入 alert pipeline
+9. `LimitUsageRule` 对实时数据做命中判断；time-based 规则则在定时点通过 loader server 拉 snapshot 再判断
+10. 命中后由 `FastAlertEngine` 生成并发布 `LimitUsageAlert`
+11. `limitusageserver` 侧消费 `Coverage.Alert`，做 filter/process/validation
+12. `LimitUsageAlertConsumer` 回查 `AlertRule` 后决定最终通知方式
 
-## 当前可以确认的关键逻辑点
+## 对你问题的直接回答
 
-- LimitUsage 是主 alert engine 的一部分，不是外挂旁路。
-- 实时 limit usage 的 engine 入口已经拍实，就是 `LimitUsageAlertEngineConsumer -> AlertEngine.process(limitUsage)`。
-- time-based rule 不是等实时消息，而是到点主动向 loader server 拉 snapshot。
-- 运行时规则在 `LimitUsageAlertSource` 内部区分成 threshold 和 scheduled 两套集合。
-- alert 去重不止发生在通知侧，engine 里还有 `activeAlerts` 的 active alert 去重。
-- 通知侧会重新回查 `AlertRule`，说明 alert payload 本身不是唯一事实源。
+你问的是：
 
-## 还不够 1:1 的地方
+“我不确定的是信息流入时是否是经过生成的规则的实例校验，触发的话就发送alert？”
 
-如果你的目标是“逻辑链已经够清楚”，当前状态够了。
+当前答案是：
 
-如果你的目标是“源码也要尽量 1:1”，现在还有几个明显缺口：
+- 是，基本可以这么理解。
+- 但更准确一点说，不是“先生成 alert 再校验”，而是：
+  - 先把 `AlertRule` 接入并转成 `LimitUsageAlertSource` 持有的运行态规则
+  - 实时或定时得到的 limit usage 数据再去匹配这些规则
+  - 匹配成功后才生成 alert
 
-### A. AlertRule 仍然不是完整尾部
+也就是：
 
-当前 [AlertRule.java](/Users/fortunebian/Downloads/futures_ui/model/alert-rule/src/main/java/com/xx/jetstream/model/alert/AlertRule.java) 已经具备：
+- `AlertRule` 是配置层
+- `LimitUsageRule` 是运行态判定层
+- `FastAlertEngine` 是统一生成/发布层
 
-- 可见字段段
-- `isAlgoRule`
-- `isValid`
-- `isLimitUsageRule`
-- `isTimeBasedLimitUsageRule`
-- 当前调用面需要的若干 getter
+## 已确认不再继续扩展的点
 
-但还不是完整 1:1：
+按你最新确认：
 
-- builder 尾段没拍全
-- getter/setter 尾段没拍全
-- 某些通知字段的声明位置不在当前可见区域，只能按调用做结构性补全
+- `LimitUsageAlertConsumer`
+- `LimitUsageAlertAckingConsumer`
+- `ConfigServerDao`
 
-### B. 通知侧几个类还没被这轮近拍直接验证
+这些类当前版本已经与事实和图片一致，不再作为待补拍项。
 
-仍建议补拍：
+另外：
 
-1. `LimitUsageAlertConsumer`
-2. `LimitUsageAlertAckingConsumer`
-3. `ConfigServerDao`
+- 项目里没有带 `Controller` 关键字的类，因此之前把 `LimitUsageRuleController` 作为优先补拍项是不成立的，现已从推断链中移除。
+- `AlertsRestBase` 只作为 `ConfigServerDao -> AlertRule endpoint -> elasticSearchDao` 的关系证据保留，不需要在本线程中做大类转写。
 
-理由：
+## 仍然不够 1:1 的部分
 
-- 这些类会决定最终通知分叉、rule 回查方式、以及 ack 行为
-- 目前虽然已有转写，但可信度不如这轮精拍过的类
+当前还没完全闭合的，主要只剩两类：
 
-### C. 规则写入/刷新入口还没拍到
+### 1. AlertRule model 尾部
 
-如果你想把“前端创建 LimitUsage 规则”到“aviator-dra 开始执行该规则”这一段彻底打通，还需要：
+当前 [AlertRule.java](/Users/fortunebian/Downloads/futures_ui/model/alert-rule/src/main/java/com/xx/jetstream/model/alert/AlertRule.java) 已经够支撑分析和当前调用，但仍不是完整 1:1：
 
-1. `LimitUsageRuleController`
-2. `LimitUsageRuleService`
-3. `AlertRuleFilterMapper`
-4. 任何把 `AlertRule` 刷进 `LimitUsageAlertSource.processNewAlertRule(...)` 的 registry/provider/source 类
-5. config server 里负责持久化或查询 `AlertRule` 的 endpoint/service 类
+- getter/setter 尾部没拍全
+- builder 尾部没拍全
 
-这是当前链路里最大的事实缺口。
+### 2. alert 发布后的最终下游
 
-## 当前最稳妥的判断
+如果你还要把“生成之后具体怎么 publish”彻底补死，最值得补的是：
 
-我现在的判断是：
+- `AlertPublisher`
+- 具体 publisher target / downstream publish 类
 
-- “LimitUsage Alert 是怎么从 limit usage 数据走到通知”的主链路，已经足够完整。
-- “规则是怎么从前端写入并刷新到运行态”的前半段，还没有 solid source。
-- “AlertRule model 的完整尾部”也还没完全拍到，所以 model 目前是“足够支撑链路分析和当前调用”，但不是完整源文件级复刻。
-
-如果你下一轮继续补图，我建议优先级是：
-
-1. `LimitUsageRuleController`
-2. `LimitUsageRuleService`
-3. `AlertRuleFilterMapper`
-4. `LimitUsageAlertConsumer`
-5. `ConfigServerDao`
-6. `AlertRule` 尾部 getter/setter/builder 区域
-
-这样就能把“规则进入系统”到“规则驱动通知”的整段闭环补全得更扎实。
+这不影响当前 LimitUsage 规则判定链路，但会影响“alert 发布到总线后的最后一跳”理解精度。
