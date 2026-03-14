@@ -1,11 +1,32 @@
 # ui-middle-tier-services 重建说明
 
-当前已按截图重建的 LimitUsage Alert 关键链路类包括：
-- API 入口：LimitUsageRuleController
-- 规则创建：LimitUsageRuleService
-- 过滤器映射：AlertRuleFilterMapper
-- 运行时过滤：LimitUsageAlertFilter
-- 规则装载源：LimitUsageAlertSource
-- 引擎启动入口：AlertEngineBootstrap
+当前目录下的还原内容以 `images/ui-middle-tiers/directory_structure` 和各模块代码图为准。
 
-这些文件目前只保留最小可分析骨架，重点聚焦 MIC 与 MICFamily 的逻辑表达，不扩展未拍到的业务细节。
+目前已按代码图明确落下的 LimitUsage Alert 相关类主要包括：
+
+- `aviator-dra`
+  - `AlertEngine`
+  - `AlertGenerator`
+  - `FastAlertEngine`
+  - `AlertGeneratorModule`
+  - `LimitUsageRule`
+  - `AlertGeneratorSource`
+  - `LimitUsageAlertSource`
+- `recap-server`
+  - `ConfigServerDao`
+  - `LimitUsageAlertAckingConsumer`
+  - `LimitUsageAlertConsumer`
+  - `LimitUsageAlertFilter`
+  - `LimitUsageAlertProcessor`
+  - `LimitUsageAlertRuleValidation`
+  - `LimitUsageServer`
+  - `LimitUsageServerDebug`
+  - `Main`
+  - `ApplicationModule`
+  - `JerseyModule`
+  - `LimitUsageLoader`
+  - `LimitUsageApi`
+  - `LimitUsageLoaderServer`
+  - `Main`
+
+关于当前可确认的数据流和未解决歧义，见 [limit-usage-alert-flow.md](/Users/fortunebian/Downloads/futures_ui/ui-middle-tiers/limit-usage-alert-flow.md)。

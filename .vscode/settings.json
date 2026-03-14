@@ -1,0 +1,10 @@
+{
+  "java.errors.incompleteClasspath.severity": "ignore",
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.autobuild.enabled": false,
+  "java.maxConcurrentBuilds": 1,
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.server.launchMode": "LightWeight"
+}
