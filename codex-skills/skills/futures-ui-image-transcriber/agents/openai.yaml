@@ -1,0 +1,4 @@
+interface:
+  display_name: "Futures UI Image Transcriber"
+  short_description: "Turn source images into repo code files."
+  default_prompt: "Use $futures-ui-image-transcriber to recreate code and folder structure from the referenced source images."
