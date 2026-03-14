@@ -24,6 +24,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     private static final OctaneLogger LOG = LogUtility.getLogger();
     private static final String LIMIT_USAGE_LOADER_URL = "limitUsageLoaderUrl";
     private static final String ACCOUNT_DELIMITER = ",";
+    private static final String ACCOUNT_LIST_QUERY_PARAM = "accountlist";
     private static final long DAY_IN_MILLIS = 24 * 60 * 60 * 1000;
     private static final String dateFormat = "yyyyMMdd";
 
@@ -125,6 +126,15 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
             return;
         }
 
+        // 中文注释：前端已做互斥校验，但规则也可能来自 consumer/polling，这里再次兜底 selector 的唯一性。
+        if (!alertRule.hasValidLimitUsageVenueSelector()) {
+            LOG.warn(
+                "Limit Usage Alert Rule [{}] is invalid because MIC and MICFamily must be mutually exclusive and one selector must be set.",
+                alertRule.getId()
+            );
+            return;
+        }
+
         if (!this.disablePermitValidation && isInvalidUser(alertRule, permitEngine)) {
             return;
         }
@@ -156,17 +166,19 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         );
 
         if (isTimeBased) {
-            scheduleTimeBasedRule(limitUsageRule.getAlertRule());
+            scheduleTimeBasedRule(limitUsageRule);
         } else {
             thresholdRules.add(limitUsageRule);
         }
     }
 
-    private void scheduleTimeBasedRule(AlertRule alertRule) {
+    private void scheduleTimeBasedRule(LimitUsageRule limitUsageRule) {
+        AlertRule alertRule = limitUsageRule.getAlertRule();
         long timeDelay = calculateTimeDelay(alertRule);
         String accountIds = getAccountsString(alertRule);
         MultivaluedMap<String, String> queryParams = new MultivaluedHashMap<>();
-        queryParams.add("accountList", accountIds);
+        // 中文注释：time-based 快照接口当前收的是 accountlist，这里对齐已有 API 定义避免装载后查不到数据。
+        queryParams.add(ACCOUNT_LIST_QUERY_PARAM, accountIds);
 
         ScheduledFuture<?> future = scheduler.schedule(() -> {
             ObjectMapper objectMapper = new ObjectMapper();
@@ -180,8 +192,24 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
                 );
                 Map<String, Object> data =
                     objectMapper.readValue(response, new TypeReference<>() {});
-                LOG.info("Received limit usage data [{}] for rule [{}]", data, alertRule.getId());
-                alertEngine.process(generateNewAlerts(alertRule, data));
+                // 中文注释：time-based 告警在真正生成前先按 MIC / MICFamily 过滤快照，保证 selector 语义与实时路径一致。
+                Map<String, Object> filteredData = limitUsageRule.filterMatchingLimitUsages(data);
+                LOG.info(
+                    "Received limit usage data [{}] and filtered data [{}] for rule [{}]",
+                    data,
+                    filteredData,
+                    alertRule.getId()
+                );
+                if (filteredData.isEmpty()) {
+                    LOG.info(
+                        "Skipping time-based limit usage alert for rule [{}] because no snapshot rows matched selector type=[{}] values=[{}]",
+                        alertRule.getId(),
+                        limitUsageRule.getVenueSelectorType(),
+                        limitUsageRule.getVenueSelectorValues()
+                    );
+                    return;
+                }
+                alertEngine.process(generateNewAlerts(limitUsageRule, filteredData));
             } catch (JsonProcessingException e) {
                 String errorMessage = String.format(
                     "Unable to retrieve margin usage data for alert rule [%s], accountsIds "
@@ -266,13 +294,19 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     }
 
     public List<UnpublishedAlert> generateNewAlerts(
-        AlertRule alertRule,
+        LimitUsageRule limitUsageRule,
         Map<String, Object> limitUsageMap
     ) {
+        if (limitUsageMap == null || limitUsageMap.isEmpty()) {
+            return null;
+        }
+
+        AlertRule alertRule = limitUsageRule.getAlertRule();
         LOG.info(
-            "Raising alert for time based rule. Rule is - RuleId:[{}] / Venue:{} / AccountId:{} / TimeToTrigger:[{}]",
+            "Raising alert for time based rule. Rule is - RuleId:[{}] / SelectorType:[{}] / SelectorValues:{} / AccountId:{} / TimeToTrigger:[{}]",
             alertRule.getId(),
-            alertRule.getVenue(),
+            limitUsageRule.getVenueSelectorType(),
+            limitUsageRule.getVenueSelectorValues(),
             alertRule.getAccountId(),
             getTimeToTriggerForRule(alertRule)
         );

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Business Code Change"
+  short_description: "工作业务代码因任务需求改动：聚焦最小必要范围的业务代码实现与风险说明。"
+  default_prompt: "Inspect the current workspace, lock the smallest necessary set of business-code changes for the requested task, implement them incrementally with Chinese comments on each substantial code block, avoid guessing missing facts, and finish with what changed, why, and residual risks."

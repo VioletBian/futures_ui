@@ -46,6 +46,7 @@ public class AlertRule implements Serializable {
     private Boolean settleAsFixed;
     private Boolean synthetic;
     private HashSet<String> venue;
+    private HashSet<String> micFamily;
     private String explanation;
     private String parsedExplanation;
     private AlertFieldComparisonMode.Modes explanationComparisonMode;
@@ -210,11 +211,11 @@ public class AlertRule implements Serializable {
     }
 
     private boolean validateLimitUsageRule() {
-        // The tail of this predicate is partially obscured; the threshold/time split is directly supported by nearby lines.
+        // 中文注释：LimitUsage 规则现在允许 MIC 或 MICFamily 二选一，但仍然要求 selector 只能生效一个。
         return getVersion() >= 0
             && getKerberos() != null
             && getMessage() != null
-            && getVenue() != null
+            && hasValidLimitUsageVenueSelector()
             && (getLimitUsageAlertThreshold() != null || isTimeBasedLimitUsageRule());
     }
 
@@ -229,6 +230,22 @@ public class AlertRule implements Serializable {
     public boolean isTimeBasedLimitUsageRule() {
         return StringUtils.isNotBlank(getLimitUsageAlertTime())
             && StringUtils.isNotBlank(getLimitUsageAlertTimezone());
+    }
+
+    // 中文注释：把 venue selector 的互斥语义收敛在 model 层，便于装载和匹配阶段复用同一判断。
+    @JsonIgnore
+    public boolean hasMicVenueSelection() {
+        return getVenue() != null && !getVenue().isEmpty();
+    }
+
+    @JsonIgnore
+    public boolean hasMicFamilySelection() {
+        return getMicFamily() != null && !getMicFamily().isEmpty();
+    }
+
+    @JsonIgnore
+    public boolean hasValidLimitUsageVenueSelector() {
+        return hasMicVenueSelection() ^ hasMicFamilySelection();
     }
 
     public String getId() {
@@ -265,6 +282,11 @@ public class AlertRule implements Serializable {
 
     public HashSet<String> getVenue() {
         return venue;
+    }
+
+    // 中文注释：当前 AlertRule 是最小重建版本，这个 accessor 仅补齐 LimitUsage 的 MICFamily 读取能力。
+    public HashSet<String> getMicFamily() {
+        return micFamily;
     }
 
     public StatComparison<Double> getLimitUsageAlertThreshold() {
