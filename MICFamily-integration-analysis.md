@@ -8,8 +8,8 @@
 - 选择 MIC 时会清空 MICFamily。
 - 选择 MICFamily 时会清空 MIC。
 - 当前字段被清空后，另一字段重新可选。
-4. 点击提交后，页面调用 LimitUsageUtil.buildPayload 组装请求，再发送到 createLimitUsageRule。
-5. DRA 中台入口接收请求，并校验 venue selector 必须且只能有一种。
+4. 点击提交后，通过validateForm进行校验，校验时也校验MIC和MICFamily相关内容。
+   
 
 ## 2. Alert Engine 启动后从 ES 生成规则的逻辑流
 
