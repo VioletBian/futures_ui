@@ -71,6 +71,7 @@ class LimitUsageAlertSourceTest {
         );
     }
 
+    @Test
     void testRuleIsAddedIf_limitUsageTimeBasedAlert() {
         AlertRule rule = generateLimitUsageTimeBasedAlertRule();
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
@@ -88,6 +89,7 @@ class LimitUsageAlertSourceTest {
         );
     }
 
+    @Test
     void testRuleIsNotAddedIf_softDelete() {
         AlertRule rule = new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule()).setSoftDelete(true).build();
         limitUsageAlertSource.processNewAlertRule(rule);
