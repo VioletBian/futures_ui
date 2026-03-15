@@ -72,6 +72,23 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
+    void testRuleIsAddedIf_limitUsageAlert_micFamily() {
+        // 中文注释：覆盖新增 MICFamily selector 规则可以进入 thresholdRules。
+        AlertRule rule = buildMicFamilyLimitUsageAlertRule();
+        limitUsageAlertSource.processNewAlertRule(rule);
+        assertEquals(
+            1,
+            limitUsageAlertSource.getThresholdRules().size(),
+            "Expected a Limit usage MICFamily threshold alert rule to be processed"
+        );
+        assertEquals(
+            0,
+            limitUsageAlertSource.getScheduledRules().size(),
+            "Expected a Limit usage MICFamily threshold rule to not be processed as time-based rule"
+        );
+    }
+
+    @Test
     void testRuleIsAddedIf_limitUsageTimeBasedAlert() {
         AlertRule rule = generateLimitUsageTimeBasedAlertRule();
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
@@ -86,6 +103,25 @@ class LimitUsageAlertSourceTest {
             1,
             limitUsageAlertSource.getScheduledRules().size(),
             "Expected Limit usage time-based rule to be processed"
+        );
+    }
+
+    @Test
+    void testRuleIsNotAddedIf_limitUsageSelectorConflict() {
+        // 中文注释：覆盖规则层互斥语义，MIC 和 MICFamily 同时出现时不允许进入运行态。
+        AlertRule rule = new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
+            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .build();
+        limitUsageAlertSource.processNewAlertRule(rule);
+        assertEquals(
+            0,
+            limitUsageAlertSource.getThresholdRules().size(),
+            "Expected a rule with both MIC and MICFamily to be rejected"
+        );
+        assertEquals(
+            0,
+            limitUsageAlertSource.getScheduledRules().size(),
+            "Expected a rule with both MIC and MICFamily to be rejected"
         );
     }
 
@@ -420,6 +456,30 @@ class LimitUsageAlertSourceTest {
         assertThrows(RuntimeException.class, scheduledTask::run, "Failed to parse limit usage data for rule [rule2]");
     }
 
+    @Test
+    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyNoMatchSkipsAlert() {
+        // 中文注释：覆盖 time-based 的 MICFamily 快照过滤，不命中 selector 时不应生成 alert。
+        AlertRule rule = buildMicFamilyTimeBasedAlertRule();
+        limitUsageAlertSource.setScheduler(scheduler);
+        limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
+
+        ScheduledFuture future = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
+        when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
+            .thenReturn(buildMicFamilyTimeBasedResponse("NON_SFX"));
+        doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
+
+        limitUsageAlertSource.processNewAlertRule(rule);
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).schedule(runnableCaptor.capture(), anyLong(), any(TimeUnit.class));
+        Runnable scheduledTask = runnableCaptor.getValue();
+        scheduledTask.run();
+
+        verify(alertEngine, Mockito.never()).process(any(List.class));
+    }
+
+    @Test
     void testRemoveRule_nullRule() {
         assertFalse(limitUsageAlertSource.processRemoveAlertRule(null));
     }
@@ -513,6 +573,7 @@ class LimitUsageAlertSourceTest {
 
     @Test
     void testGenerateNewAlerts() {
+        // 中文注释：主代码现在接收运行态 LimitUsageRule，这里同步覆盖新的 time-based 生成入口。
         AlertRule rule = generateLimitUsageTimeBasedAlertRule();
         limitUsageAlertSource.setScheduler(scheduler);
         limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
@@ -522,7 +583,9 @@ class LimitUsageAlertSourceTest {
         when(future.isDone()).thenReturn(false);
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
 
-        assertEquals(1, limitUsageAlertSource.generateNewAlerts(rule, generateLimitUsageMap(0)).size());
+        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
+            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(rule, application, activeAlerts);
+        assertEquals(1, limitUsageAlertSource.generateNewAlerts(limitUsageRule, generateLimitUsageMap(0)).size());
     }
 
     @Test
@@ -551,5 +614,42 @@ class LimitUsageAlertSourceTest {
         assertEquals(86000000, limitUsageAlertSource.getTimeDelay(-400000));
         assertEquals(10, limitUsageAlertSource.getTimeDelay(86400010));
         assertEquals(1000, limitUsageAlertSource.getTimeDelay(1000));
+    }
+
+    // 中文注释：MICFamily 相关 helper 只补本轮 selector 测试数据，尽量不动原有测试构造。
+    private AlertRule buildMicFamilyLimitUsageAlertRule() {
+        return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
+            .setVenue(null)
+            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .build();
+    }
+
+    private AlertRule buildMicFamilyTimeBasedAlertRule() {
+        return new AlertRule.AlertRuleBuilder(generateLimitUsageTimeBasedAlertRule())
+            .setVenue(null)
+            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .build();
+    }
+
+    private String buildMicFamilyTimeBasedResponse(String micFamily) {
+        return "{\n" +
+            "\"04860800\": {\n" +
+            "\"id\": \"ZCI02972-1737424527567\",\n" +
+            "\"lastUpdateTimeUtc\": 1737424527567,\n" +
+            "\"clientRefId\": \"55300022\",\n" +
+            "\"type\": \"Margin\",\n" +
+            "\"usage\": 8258828.927051164,\n" +
+            "\"limit\": 11625315.71098684,\n" +
+            "\"mic\": \"XZCE\",\n" +
+            "\"micFamily\": \"" + micFamily + "\",\n" +
+            "\"currency\": \"USD\",\n" +
+            "\"accounts\": [\n" +
+            "{\n" +
+            "\"accountId\": \"ZCI02972\",\n" +
+            "\"accountType\": \"GMI\"\n" +
+            "}\n" +
+            "]\n" +
+            "}\n" +
+            "}";
     }
 }
