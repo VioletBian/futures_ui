@@ -86,9 +86,15 @@ describe('Limit Usage Form tests', () => {
         });
     });
 
-    // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
+    // ===== MicFamily 增量测试 =====
+    // 这组 case 覆盖最近新增的 MIC Family 维度，并补足两个容易回归的点：
+    // 1. 组件是否把 micFamily 选择值继续传到 account filtering / submit payload。
+    // 2. MIC 与 MIC Family 的互斥逻辑是否会正确影响 account type 和 selector disable 状态。
+    // 这几条测试都刻意避免依赖 react-select 菜单文案的瞬时渲染时机，减少 jsdom 下的偶发失败。
 
-    // 增量说明：验证 getFilteredAccountOptions 新增 micFamily 参数位是否已传递。
+    // 验证 getFilteredAccountOptions 已接收新增的 micFamily 参数位。
+    // 这里不关心筛选算法本身，只验证 LimitUsage 组件在联动更新 account options 时
+    // 已把 selectedVenueOptions / selectedMicFamilyOptions 一并透传给 util。
     it('should call getFilteredAccountOptions with micFamily argument', async () => {
         const optionsSpy = jest.spyOn(LimitUsageUtil.prototype, 'getFilteredAccountOptions')
             .mockReturnValue([] as any);
@@ -105,10 +111,14 @@ describe('Limit Usage Form tests', () => {
         expect(Array.isArray(firstCallArgs[3])).toBeTruthy();
     });
 
-    // 增量说明:
-    // 1. 组件初始只提供 GMI 选项，不能在“无市场选择”时直接切到 Exchange Account。
-    // 2. 先选择一个中国市场（这里用 MIC Family = SFX）后，account type 才会扩展出 Exchange Account。
-    // 3. 再切换市场维度（从 MIC Family 改为 MIC）后，useEffect 会把 accountType 重置回 GMI。
+    // 验证市场维度切换时 account type 的重置行为。
+    // 关键流程：
+    // 1. 初始状态只有 GMI。
+    // 2. 选择中国市场 MIC Family 之后，Account Type 才会扩展出 Exchange Account。
+    // 3. 先切到 Exchange Account，再移除 MIC Family 并改选 MIC。
+    // 4. 由于 selectedMicFamilyOptions / selectedVenueOptions 发生变化，useEffect 应把 accountType 重置回 GMI。
+    // 这里先移除 SFX 再选 MIC，是为了符合组件当前的互斥实现：
+    // 只要 MIC Family 还在，MIC selector 就会保持禁用，测试必须按真实交互路径走。
     it('should reset account type to GMI after market selection changes', async () => {
         jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
             .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
@@ -154,10 +164,13 @@ describe('Limit Usage Form tests', () => {
         });
     });
 
-    // 增量说明:
-    // 1. 这里验证的是“互斥禁用”而不是具体某个文案是否已经渲染到菜单中。
-    // 2. 先等待 venue options 加载并确认 MIC 输入框可用，再触发选择，避免 react-select 菜单还未准备好时直接找 XINE。
-    // 3. 选择完成后，以 micFamily input disabled 作为稳定断言，覆盖组件的互斥逻辑。
+    // 验证 MIC 与 MIC Family selector 的互斥禁用。
+    // 这个 case 之前失败的原因不是业务逻辑错，而是测试把 react-select 当成原生 select/input：
+    // 1. 直接 findByText('XINE') 依赖菜单文本是否已经渲染出来，时序不稳定。
+    // 2. 直接读取 input.disabled 也不可靠，因为 react-select 的禁用态主要体现在 control class 上。
+    // 现在改成：
+    // 1. 通过真实 input 发送 ArrowDown + Enter 完成选择。
+    // 2. 通过 control 的 --is-disabled class 断言 MIC Family 已被禁用。
     it('should enforce mutual disable between MIC and MIC Family selectors', async () => {
         jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
             .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
@@ -208,7 +221,9 @@ describe('Limit Usage Form tests', () => {
         });
     });
 
-    // 增量说明：验证 submit 前传入 validateForm 的 payload 同时包含 mic 与 micFamily 字段。
+    // 验证 submit 前传入 validateForm 的 form payload 同时包含 mic 与 micFamily。
+    // 这条测试的目的不是覆盖表单校验细节，而是防止 fillForm/submit 流程遗漏 micFamily 字段，
+    // 导致 UI 虽然展示了新 selector，但真正提交给后续逻辑的对象缺字段。
     it('should submit with validateForm payload containing mic and micFamily fields', async () => {
         const validateSpy = jest.spyOn(LimitUsageUtil.prototype, 'validateForm').mockReturnValue(true);
         const createSpy = jest.spyOn(CustomAlertsUtil, 'createNewAlert')
@@ -438,48 +453,4 @@ describe('Limit Usage Form tests', () => {
         expect(accountTypeSelectElement.value).toEqual('GMI');
     });
 
-    // ===== 功能性补充测试（基于最近 MicFamily 提交逻辑）===== 
-    // 增量说明：验证选择 MIC 后会触发互斥效果（MICFamily 禁用）。
-    it('should clear MIC Family when MIC is selected', async () => {
-        jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
-            .mockReturnValue(Promise.resolve([{ value: 'XINE', label: 'XINE' }]));
-        jest.spyOn(LimitUsageUtil.prototype, 'fetchMicFamilyFromWaterfall')
-            .mockReturnValue(Promise.resolve([{ value: 'SFX', label: 'SFX' }]));
-
-        render(<LimitUsage />);
-
-        await waitFor(() => {
-            expect(screen.getByTestId('venueDropdown')).toBeTruthy();
-            expect(screen.getByTestId('micFamilyDropdown')).toBeTruthy();
-        });
-
-        const venueInput = getSelectInput('venueDropdown');
-        fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
-        fireEvent.keyDown(venueInput, { key: 'Enter', code: 'Enter' });
-
-        await waitFor(() => {
-            expect(isSelectDisabled('micFamilyDropdown')).toBeTruthy();
-        });
-    });
-
-    // 增量说明：验证创建请求 payload 中包含 micFamily 字段。
-    it('should include micFamily in payload when MIC Family is selected', async () => {
-        const createSpy = jest.spyOn(CustomAlertsUtil, 'createNewAlert')
-            .mockReturnValue(Promise.resolve({ status: 200 } as any));
-        jest.spyOn(LimitUsageUtil.prototype, 'validateForm').mockReturnValue(true);
-
-        render(<LimitUsage />);
-
-        await act(async () => {
-            const createElement = screen.queryByText('Create', { exact: true }) as HTMLButtonElement;
-            fireEvent.click(createElement);
-        });
-
-        // UNCERTAIN: 截图未能完整拍到 payload 结构。
-        // fillForm 增加了 micFamily 字段，因此检查入参对象包含该 key。
-        const firstCallPayload = (createSpy.mock.calls[0] || [])[0] as any;
-        if (firstCallPayload) {
-            expect(firstCallPayload).toHaveProperty('micFamily');
-        }
-    });
 });
