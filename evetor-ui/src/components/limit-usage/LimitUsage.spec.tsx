@@ -96,18 +96,48 @@ describe('Limit Usage Form tests', () => {
         expect(Array.isArray(firstCallArgs[3])).toBeTruthy();
     });
 
-    // 增量说明：验证市场维度变化后 accountType 会按实现重置为 GMI。
+    // 增量说明:
+    // 1. 组件初始只提供 GMI 选项，不能在“无市场选择”时直接切到 Exchange Account。
+    // 2. 先选择一个中国市场（这里用 MIC Family = SFX）后，account type 才会扩展出 Exchange Account。
+    // 3. 再切换市场维度（从 MIC Family 改为 MIC）后，useEffect 会把 accountType 重置回 GMI。
     it('should reset account type to GMI after market selection changes', async () => {
         jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
             .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
+        jest.spyOn(LimitUsageUtil.prototype, 'fetchMicFamilyFromWaterfall')
+            .mockResolvedValue([{ value: 'SFX', label: 'SFX' }] as any);
 
         render(<LimitUsage />);
 
         const accountTypeSelect = await screen.findByTestId('accountType');
+        const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
+
+        await waitFor(() => {
+            // 等待异步 waterfall 数据加载完毕，避免在 react-select 尚未拿到 options 时打开菜单。
+            expect(micFamilyInput).toBeTruthy();
+            expect(micFamilyInput.disabled).toBeFalsy();
+        });
+
+        fireEvent.keyDown(micFamilyInput, { key: 'ArrowDown', code: 'ArrowDown' });
+        const micFamilyOption = await screen.findByText('SFX');
+        fireEvent.click(micFamilyOption);
+
+        // 只有中国市场被选中时，Account Type 才应该暴露 Exchange Account 选项。
+        await waitFor(() => {
+            expect(screen.getByRole('option', { name: 'Exchange Account' })).toBeTruthy();
+        });
+
         fireEvent.change(accountTypeSelect, { target: { value: 'Exchange Account' } });
-        expect((accountTypeSelect as HTMLSelectElement).value).toEqual('Exchange Account');
+
+        await waitFor(() => {
+            expect((accountTypeSelect as HTMLSelectElement).value).toEqual('Exchange Account');
+        });
 
         const venueInput = document.getElementById('venue') as HTMLInputElement;
+        await waitFor(() => {
+            // 选中了 MIC Family 后，MIC 选择器之前会被互斥禁用；清空前者后这里会重新可用。
+            expect(venueInput.disabled).toBeFalsy();
+        });
+
         fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
         const venueOption = await screen.findByText('XINE');
         fireEvent.click(venueOption);
@@ -117,7 +147,10 @@ describe('Limit Usage Form tests', () => {
         });
     });
 
-    // 增量说明：验证 MIC 与 MICFamily 互斥时，选择 MIC 会使 MICFamily 进入禁用态。
+    // 增量说明:
+    // 1. 这里验证的是“互斥禁用”而不是具体某个文案是否已经渲染到菜单中。
+    // 2. 先等待 venue options 加载并确认 MIC 输入框可用，再触发选择，避免 react-select 菜单还未准备好时直接找 XINE。
+    // 3. 选择完成后，以 micFamily input disabled 作为稳定断言，覆盖组件的互斥逻辑。
     it('should enforce mutual disable between MIC and MIC Family selectors', async () => {
         jest.spyOn(LimitUsageUtil.prototype, 'fetchVenuesFromWaterfall')
             .mockResolvedValue([{ value: 'XINE', label: 'XINE' }] as any);
@@ -128,6 +161,12 @@ describe('Limit Usage Form tests', () => {
 
         const venueInput = document.getElementById('venue') as HTMLInputElement;
         const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
+
+        await waitFor(() => {
+            expect(venueInput).toBeTruthy();
+            expect(micFamilyInput).toBeTruthy();
+            expect(venueInput.disabled).toBeFalsy();
+        });
 
         fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
         const venueOption = await screen.findByText('XINE');
