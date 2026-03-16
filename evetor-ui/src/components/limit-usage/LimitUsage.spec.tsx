@@ -18,6 +18,15 @@ jest.mock('./LimitUsageGrid', () => ({ LimitUsageGrid: () => 'Mocked Limit Usage
 
 describe('Limit Usage Form tests', () => {
     const getById = queryByAttribute.bind(null, 'id');
+    const getSelectInput = (testId: string): HTMLInputElement => {
+        const input = screen.getByTestId(testId).querySelector('input');
+        expect(input).toBeTruthy();
+        return input as HTMLInputElement;
+    };
+    const isSelectDisabled = (testId: string): boolean => {
+        const control = screen.getByTestId(testId).querySelector('.limitusage-input-field__control');
+        return !!control?.className.includes('limitusage-input-field__control--is-disabled');
+    };
 
     const getConfigSpy = jest
         .spyOn(ApplicationConfigurationUtil, 'getConfiguration')
@@ -109,17 +118,14 @@ describe('Limit Usage Form tests', () => {
         render(<LimitUsage />);
 
         const accountTypeSelect = await screen.findByTestId('accountType');
-        const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
+        const micFamilyInput = getSelectInput('micFamilyDropdown');
 
         await waitFor(() => {
-            // 等待异步 waterfall 数据加载完毕，避免在 react-select 尚未拿到 options 时打开菜单。
-            expect(micFamilyInput).toBeTruthy();
-            expect(micFamilyInput.disabled).toBeFalsy();
+            expect(isSelectDisabled('micFamilyDropdown')).toBeFalsy();
         });
 
         fireEvent.keyDown(micFamilyInput, { key: 'ArrowDown', code: 'ArrowDown' });
-        const micFamilyOption = await screen.findByText('SFX');
-        fireEvent.click(micFamilyOption);
+        fireEvent.keyDown(micFamilyInput, { key: 'Enter', code: 'Enter' });
 
         // 只有中国市场被选中时，Account Type 才应该暴露 Exchange Account 选项。
         await waitFor(() => {
@@ -132,15 +138,16 @@ describe('Limit Usage Form tests', () => {
             expect((accountTypeSelect as HTMLSelectElement).value).toEqual('Exchange Account');
         });
 
-        const venueInput = document.getElementById('venue') as HTMLInputElement;
+        const removeMicFamilySelection = screen.getByLabelText('Remove SFX');
+        fireEvent.click(removeMicFamilySelection);
+
+        const venueInput = getSelectInput('venueDropdown');
         await waitFor(() => {
-            // 选中了 MIC Family 后，MIC 选择器之前会被互斥禁用；清空前者后这里会重新可用。
-            expect(venueInput.disabled).toBeFalsy();
+            expect(isSelectDisabled('venueDropdown')).toBeFalsy();
         });
 
         fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
-        const venueOption = await screen.findByText('XINE');
-        fireEvent.click(venueOption);
+        fireEvent.keyDown(venueInput, { key: 'Enter', code: 'Enter' });
 
         await waitFor(() => {
             expect((accountTypeSelect as HTMLSelectElement).value).toEqual('GMI');
@@ -159,21 +166,17 @@ describe('Limit Usage Form tests', () => {
 
         render(<LimitUsage />);
 
-        const venueInput = document.getElementById('venue') as HTMLInputElement;
-        const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
+        const venueInput = getSelectInput('venueDropdown');
 
         await waitFor(() => {
-            expect(venueInput).toBeTruthy();
-            expect(micFamilyInput).toBeTruthy();
-            expect(venueInput.disabled).toBeFalsy();
+            expect(isSelectDisabled('venueDropdown')).toBeFalsy();
         });
 
         fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
-        const venueOption = await screen.findByText('XINE');
-        fireEvent.click(venueOption);
+        fireEvent.keyDown(venueInput, { key: 'Enter', code: 'Enter' });
 
         await waitFor(() => {
-            expect(micFamilyInput.disabled).toBeTruthy();
+            expect(isSelectDisabled('micFamilyDropdown')).toBeTruthy();
         });
     });
 
@@ -450,14 +453,12 @@ describe('Limit Usage Form tests', () => {
             expect(screen.getByTestId('micFamilyDropdown')).toBeTruthy();
         });
 
-        const venueInput = document.getElementById('venue') as HTMLInputElement;
+        const venueInput = getSelectInput('venueDropdown');
         fireEvent.keyDown(venueInput, { key: 'ArrowDown', code: 'ArrowDown' });
-        const venueOption = await screen.findByText('XINE');
-        fireEvent.click(venueOption);
+        fireEvent.keyDown(venueInput, { key: 'Enter', code: 'Enter' });
 
-        const micFamilyInput = document.getElementById('micFamily') as HTMLInputElement;
         await waitFor(() => {
-            expect(micFamilyInput.disabled).toBeTruthy();
+            expect(isSelectDisabled('micFamilyDropdown')).toBeTruthy();
         });
     });
 
