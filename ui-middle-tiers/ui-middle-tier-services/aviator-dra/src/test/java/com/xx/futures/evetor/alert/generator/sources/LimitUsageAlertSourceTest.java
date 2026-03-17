@@ -110,7 +110,7 @@ class LimitUsageAlertSourceTest {
     void testRuleIsNotAddedIf_limitUsageSelectorConflict() {
         // 中文注释：覆盖规则层互斥语义，MIC 和 MICFamily 同时出现时不允许进入运行态。
         AlertRule rule = new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
-            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .setMicFamily("SFX")
             .build();
         limitUsageAlertSource.processNewAlertRule(rule);
         assertEquals(
@@ -620,14 +620,14 @@ class LimitUsageAlertSourceTest {
     private AlertRule buildMicFamilyLimitUsageAlertRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
             .setVenue(null)
-            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .setMicFamily("SFX")
             .build();
     }
 
     private AlertRule buildMicFamilyTimeBasedAlertRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageTimeBasedAlertRule())
             .setVenue(null)
-            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .setMicFamily("SFX")
             .build();
     }
 

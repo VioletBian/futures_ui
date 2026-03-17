@@ -192,7 +192,7 @@ public class AlertRuleConsumerTest {
             + "\"enabled\":true,"
             + "\"softDelete\":false,"
             + "\"accountId\":[\"04860800\",\"04860801\"],"
-            + "\"micFamily\":[\"SFX\"],"
+            + "\"micFamily\":\"SFX\","
             + "\"limitUsageAlertThreshold\":{\"operator\":\">\",\"value\":70.0}"
             + "}";
     }
@@ -206,7 +206,7 @@ public class AlertRuleConsumerTest {
             + "\"enabled\":true,"
             + "\"softDelete\":true,"
             + "\"accountId\":[\"04860800\",\"04860801\"],"
-            + "\"micFamily\":[\"SFX\"],"
+            + "\"micFamily\":\"SFX\","
             + "\"limitUsageAlertThreshold\":{\"operator\":\">\",\"value\":70.0}"
             + "}";
     }
@@ -220,7 +220,7 @@ public class AlertRuleConsumerTest {
             + "\"enabled\":true,"
             + "\"softDelete\":false,"
             + "\"accountId\":[\"04860800\",\"04860801\"],"
-            + "\"micFamily\":[\"SFX\"],"
+            + "\"micFamily\":\"SFX\","
             + "\"limitUsageAlertTime\":\"10:20\","
             + "\"limitUsageAlertTimezone\":\"Asia/Hong_Kong\""
             + "}";
@@ -235,7 +235,7 @@ public class AlertRuleConsumerTest {
             + "\"enabled\":true,"
             + "\"softDelete\":true,"
             + "\"accountId\":[\"04860800\",\"04860801\"],"
-            + "\"micFamily\":[\"SFX\"],"
+            + "\"micFamily\":\"SFX\","
             + "\"limitUsageAlertTime\":\"10:20\","
             + "\"limitUsageAlertTimezone\":\"Asia/Hong_Kong\""
             + "}";

@@ -36,7 +36,8 @@ export const LimitUsage = () => {
     const [venueOptions, setVenueOptions] = useState<OptionsOrGroups<any, any>>([]);
     const [selectedVenueOptions, setSelectedVenueOptions] = useState<OptionsOrGroups<any, any>>([]);
     const [micFamilyOptions, setMicFamilyOptions] = useState<OptionsOrGroups<any, any>>([]);
-    const [selectedMicFamilyOptions, setSelectedMicFamilyOptions] = useState<OptionsOrGroups<any, any>>([]);
+    // 中文注释：MicFamily 在本分支收口为单选，因此运行态状态改成单个 option/null。
+    const [selectedMicFamilyOption, setSelectedMicFamilyOption] = useState<any>(null);
     const [accountTypeOptions, setAccountTypeOptions] = useState<string[]>([...LimitUsageUtil.GMI_ACCOUNT_TYPE_STRING]);
 
     // Limit Usage Threshold
@@ -64,26 +65,26 @@ export const LimitUsage = () => {
         // Any market dimension change should reset account type to GMI first
         setAccountType(AccountType.GMI_ACCOUNT);
         setAccountTypeOptions(
-            limitUsageUtil.getAccountTypeOptions(selectedVenueOptions, selectedMicFamilyOptions)
+            limitUsageUtil.getAccountTypeOptions(selectedVenueOptions, selectedMicFamilyOption)
         );
-    }, [selectedVenueOptions, selectedMicFamilyOptions]);
+    }, [selectedVenueOptions, selectedMicFamilyOption]);
 
     useEffect((): void => {
         updateAccountIdOptions();
-    }, [accountType, accountTypeOptions, selectedVenueOptions, selectedMicFamilyOptions]);
+    }, [accountType, accountTypeOptions, selectedVenueOptions, selectedMicFamilyOption]);
 
     const handleVenueChange = (selectedOptions: any): void => {
         const nextSelected = selectedOptions || [];
         setSelectedVenueOptions(nextSelected);
         if (nextSelected.length > 0) {
-            setSelectedMicFamilyOptions([]);
+            setSelectedMicFamilyOption(null);
         }
     };
 
-    const handleMicFamilyChange = (selectedOptions: any): void => {
-        const nextSelected = selectedOptions || [];
-        setSelectedMicFamilyOptions(nextSelected);
-        if (nextSelected.length > 0) {
+    const handleMicFamilyChange = (selectedOption: any): void => {
+        const nextSelected = selectedOption || null;
+        setSelectedMicFamilyOption(nextSelected);
+        if (nextSelected) {
             setSelectedVenueOptions([]);
         }
     };
@@ -97,7 +98,7 @@ export const LimitUsage = () => {
                 accountToEmailMappings.current,
                 allChinaAccounts.current,
                 selectedVenueOptions,
-                selectedMicFamilyOptions,
+                selectedMicFamilyOption,
                 accountType
             )
         );
@@ -182,11 +183,11 @@ export const LimitUsage = () => {
 
     const fillForm = (): void => {
         const selectedMic: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedVenueOptions);
-        const selectedMicFamily: string[] = LimitUsageUtil.mapOptionTypesToStrings(selectedMicFamilyOptions);
+        // 中文注释：MicFamily 改为单选后，提交 payload 直接落单个字符串，避免继续沿用数组语义。
+        const selectedMicFamily: string = LimitUsageUtil.mapOptionTypeToString(selectedMicFamilyOption);
 
         externalLimitUsageAlertFormTemplate.current.message = emailSubject;
         externalLimitUsageAlertFormTemplate.current.venue = selectedMic;
-        // NOTE: if your actual model type doesn't yet contain micFamily, add it there.
         (externalLimitUsageAlertFormTemplate.current as any).micFamily = selectedMicFamily;
 
         externalLimitUsageAlertFormTemplate.current.accountId = accountIds;
@@ -215,7 +216,7 @@ export const LimitUsage = () => {
     const clearForm = (): void => {
         setEmailSubject('');
         setSelectedVenueOptions([]);
-        setSelectedMicFamilyOptions([]);
+        setSelectedMicFamilyOption(null);
         setOpAndValue('');
         setAccountIds([]);
         setExternalEmail('');
@@ -402,7 +403,7 @@ export const LimitUsage = () => {
                                         name="venue"
                                         options={venueOptions}
                                         placeholder={'Select MIC(s)'}
-                                        isDisabled={venueOptions.length === 0 || selectedMicFamilyOptions.length > 0}
+                                        isDisabled={venueOptions.length === 0 || !!selectedMicFamilyOption}
                                         className="limitusage-input-field"
                                         classNamePrefix="limitusage-input-field"
                                         onChange={handleVenueChange}
@@ -416,13 +417,14 @@ export const LimitUsage = () => {
                                 <fieldset data-testid="micFamilyDropdown">
                                     <label htmlFor="micFamily">MIC Family:</label>
                                     <Select
-                                        value={selectedMicFamilyOptions}
-                                        isMulti
+                                        // 中文注释：单选模式下允许 clear，用户才能在已选 MicFamily 后切回 MIC 路径。
+                                        value={selectedMicFamilyOption}
+                                        isClearable
                                         inputId="micFamily"
                                         id="micFamily"
                                         name="micFamily"
                                         options={micFamilyOptions}
-                                        placeholder={'Select MIC Family(s)'}
+                                        placeholder={'Select MIC Family'}
                                         isDisabled={micFamilyOptions.length === 0 || selectedVenueOptions.length > 0}
                                         className="limitusage-input-field"
                                         classNamePrefix="limitusage-input-field"

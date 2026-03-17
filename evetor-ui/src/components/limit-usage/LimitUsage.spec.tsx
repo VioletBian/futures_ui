@@ -94,7 +94,7 @@ describe('Limit Usage Form tests', () => {
 
     // 验证 getFilteredAccountOptions 已接收新增的 micFamily 参数位。
     // 这里不关心筛选算法本身，只验证 LimitUsage 组件在联动更新 account options 时
-    // 已把 selectedVenueOptions / selectedMicFamilyOptions 一并透传给 util。
+    // 已把 selectedVenueOptions / 单个 selectedMicFamilyOption 一并透传给 util。
     it('should call getFilteredAccountOptions with micFamily argument', async () => {
         const optionsSpy = jest.spyOn(LimitUsageUtil.prototype, 'getFilteredAccountOptions')
             .mockReturnValue([] as any);
@@ -108,7 +108,7 @@ describe('Limit Usage Form tests', () => {
         const firstCallArgs = optionsSpy.mock.calls[0] || [];
         expect(firstCallArgs.length).toBe(5);
         expect(Array.isArray(firstCallArgs[2])).toBeTruthy();
-        expect(Array.isArray(firstCallArgs[3])).toBeTruthy();
+        expect(firstCallArgs[3]).toBeNull();
     });
 
     // 验证市场维度切换时 account type 的重置行为。
@@ -116,7 +116,7 @@ describe('Limit Usage Form tests', () => {
     // 1. 初始状态只有 GMI。
     // 2. 选择中国市场 MIC Family 之后，Account Type 才会扩展出 Exchange Account。
     // 3. 先切到 Exchange Account，再移除 MIC Family 并改选 MIC。
-    // 4. 由于 selectedMicFamilyOptions / selectedVenueOptions 发生变化，useEffect 应把 accountType 重置回 GMI。
+    // 4. 由于 selectedMicFamilyOption / selectedVenueOptions 发生变化，useEffect 应把 accountType 重置回 GMI。
     // 这里先移除 SFX 再选 MIC，是为了符合组件当前的互斥实现：
     // 只要 MIC Family 还在，MIC selector 就会保持禁用，测试必须按真实交互路径走。
     it('should reset account type to GMI after market selection changes', async () => {
@@ -148,7 +148,8 @@ describe('Limit Usage Form tests', () => {
             expect((accountTypeSelect as HTMLSelectElement).value).toEqual('Exchange Account');
         });
 
-        const removeMicFamilySelection = screen.getByLabelText('Remove SFX');
+        // 中文注释：MicFamily 改成单选后通过 clear indicator 清空，确保可以切回 MIC 路径。
+        const removeMicFamilySelection = await screen.findByLabelText('Clear value');
         fireEvent.click(removeMicFamilySelection);
 
         const venueInput = getSelectInput('venueDropdown');
@@ -241,7 +242,7 @@ describe('Limit Usage Form tests', () => {
         expect(formArg).toHaveProperty('venue');
         expect(formArg).toHaveProperty('micFamily');
         expect(Array.isArray(formArg.venue)).toBeTruthy();
-        expect(Array.isArray(formArg.micFamily)).toBeTruthy();
+        expect(typeof formArg.micFamily).toBe('string');
         expect(createSpy).toHaveBeenCalled();
     });
 

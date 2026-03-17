@@ -12,7 +12,7 @@ export type EnumOptionGroups = Record<string, string[]>;
 export type LimitUsageFormState = {
   emailSubject: string;
   selectedMicOptions: string[];
-  selectedMicFamilyOptions: string[];
+  selectedMicFamilyOptions: string | null;
   internalEmail: string;
   externalEmail: string;
   alertRuleType: AlertRuleType;
@@ -27,7 +27,7 @@ export type LimitUsageFormState = {
 export type LimitUsagePayload = {
   emailSubject: string;
   mic: string[];
-  micFamily: string[];
+  micFamily: string;
   internalEmail: string;
   externalEmail: string;
   alertRuleType: AlertRuleType;

@@ -117,7 +117,8 @@ export class LimitUsageUtil {
         return {
             message: '',
             venue: [],
-            micFamily: [],
+            // 中文注释：MicFamily 在单选语义下以单个字符串承载，空值统一用空字符串表示。
+            micFamily: '',
             limitUsageAlertThreshold: null,
             limitUsageAlertTime: '',
             limitUsageAlertTimezone: '',
@@ -158,67 +159,58 @@ export class LimitUsageUtil {
         return venues.length > 0 && !this.hasOnlyChinaMics(venues) && !this.hasOnlyNonChinaMics(venues);
     }
 
-    public hasOnlyChinaMicFamilies(micFamilies: string[]): boolean {
-        if (micFamilies.length === 0) {
+    public hasOnlyChinaMicFamilies(micFamily: string): boolean {
+        if (!micFamily) {
             return false;
         }
-        return micFamilies.every((micFamily: string) => micFamily === Common.MicFamily.SFX);
+        return micFamily === Common.MicFamily.SFX;
     }
 
-    public hasOnlyNonChinaMicFamilies(micFamilies: string[]): boolean {
-        if (micFamilies.length === 0) {
+    public hasOnlyNonChinaMicFamilies(micFamily: string): boolean {
+        if (!micFamily) {
             return false;
         }
-        return micFamilies.every((micFamily: string) => micFamily !== Common.MicFamily.SFX);
+        return micFamily !== Common.MicFamily.SFX;
     }
 
-    public hasMixedMicFamilies(micFamilies: string[]): boolean {
-        return micFamilies.length > 0
-            && !this.hasOnlyChinaMicFamilies(micFamilies)
-            && !this.hasOnlyNonChinaMicFamilies(micFamilies);
-    }
-
-    public hasOnlyChinaSelections(venues: string[], micFamilies: string[]): boolean {
-        if (venues.length > 0 && micFamilies.length > 0) {
+    public hasOnlyChinaSelections(venues: string[], micFamily: string): boolean {
+        if (venues.length > 0 && !!micFamily) {
             return false;
         }
         if (venues.length > 0) {
             return this.hasOnlyChinaMics(venues);
         }
-        if (micFamilies.length > 0) {
-            return this.hasOnlyChinaMicFamilies(micFamilies);
+        if (micFamily) {
+            return this.hasOnlyChinaMicFamilies(micFamily);
         }
         return false;
     }
 
-    public hasOnlyNonChinaSelections(venues: string[], micFamilies: string[]): boolean {
-        if (venues.length > 0 && micFamilies.length > 0) {
+    public hasOnlyNonChinaSelections(venues: string[], micFamily: string): boolean {
+        if (venues.length > 0 && !!micFamily) {
             return false;
         }
         if (venues.length > 0) {
             return this.hasOnlyNonChinaMics(venues);
         }
-        if (micFamilies.length > 0) {
-            return this.hasOnlyNonChinaMicFamilies(micFamilies);
+        if (micFamily) {
+            return this.hasOnlyNonChinaMicFamilies(micFamily);
         }
         return false;
     }
 
-    public hasMixedSelections(venues: string[], micFamilies: string[]): boolean {
-        if (venues.length > 0 && micFamilies.length > 0) {
+    public hasMixedSelections(venues: string[], micFamily: string): boolean {
+        if (venues.length > 0 && !!micFamily) {
             return true;
         }
         if (venues.length > 0) {
             return this.hasMixedMics(venues);
         }
-        if (micFamilies.length > 0) {
-            return this.hasMixedMicFamilies(micFamilies);
-        }
         return false;
     }
 
-    public isValidMicFamily(micFamilies: string[]): boolean {
-        return Array.isArray(micFamilies) && micFamilies.length > 0 && micFamilies.every((item) => !!item);
+    public isValidMicFamily(micFamily: string): boolean {
+        return typeof micFamily === 'string' && micFamily.length > 0;
     }
 
     public getChinaAccounts(accountType: string): Promise<any> {
@@ -303,7 +295,7 @@ export class LimitUsageUtil {
         const missingFields: string[] = [];
         const emailSubject = get(form, 'message', '');
         const venue = get(form, 'venue', []);
-        const micFamily = get(form, 'micFamily', []);
+        const micFamily = get(form, 'micFamily', '');
         const limitUsageThreshold = get(form, 'limitUsageAlertThreshold', null);
         const accountIds = get(form, 'accountId', []);
         const internalEmail = get(form, 'emailAddress', '');
@@ -312,7 +304,7 @@ export class LimitUsageUtil {
         const alertTimezone = get(form, 'limitUsageAlertTimezone', '');
 
         const hasMic = Array.isArray(venue) && venue.length > 0;
-        const hasMicFamily = Array.isArray(micFamily) && micFamily.length > 0;
+        const hasMicFamily = typeof micFamily === 'string' && micFamily.length > 0;
 
         if (hasMic && hasMicFamily) {
             NotificationBannerUtil.show(
@@ -336,9 +328,10 @@ export class LimitUsageUtil {
             return false;
         }
 
-        if (hasMicFamily && this.hasMixedMicFamilies(micFamily)) {
+        // 中文注释：当前分支把 MicFamily 收口为单选，旧的数组输入直接判为非法，避免新旧契约混用。
+        if (Array.isArray(micFamily)) {
             NotificationBannerUtil.show(
-                'Please do not enter a mixture of China and Non-China MIC Families.',
+                'MIC Family only supports a single selection.',
                 NotificationTypes.WARNING,
                 false
             );
@@ -477,17 +470,17 @@ export class LimitUsageUtil {
         accountToEmailMappings: Object,
         allChinaAccounts: { gmiAccounts: string[], exchangeAccounts: string[] },
         venueOptions: OptionsOrGroups<any, any>,
-        micFamilyOptions: OptionsOrGroups<any, any>,
+        micFamilyOption: any,
         accountType: string
     ): OptionsOrGroups<any, any> {
         const venues: string[] = LimitUsageUtil.mapOptionTypesToStrings(venueOptions);
-        const micFamilies: string[] = LimitUsageUtil.mapOptionTypesToStrings(micFamilyOptions);
+        const micFamily: string = LimitUsageUtil.mapOptionTypeToString(micFamilyOption);
 
         const accountList: string[] = this.getFilteredAccountsList(
             accountToEmailMappings,
             allChinaAccounts,
             venues,
-            micFamilies,
+            micFamily ? [micFamily] : [],
             accountType
         );
 
@@ -542,16 +535,16 @@ export class LimitUsageUtil {
 
     public getAccountTypeOptions(
         venueOptions: OptionsOrGroups<any, any>,
-        micFamilyOptions: OptionsOrGroups<any, any>
+        micFamilyOption: any
     ): string[] {
         const venues: string[] = LimitUsageUtil.mapOptionTypesToStrings(venueOptions);
-        const micFamilies: string[] = LimitUsageUtil.mapOptionTypesToStrings(micFamilyOptions);
+        const micFamily: string = LimitUsageUtil.mapOptionTypeToString(micFamilyOption);
 
-        if (this.hasOnlyNonChinaSelections(venues, micFamilies)) {
+        if (this.hasOnlyNonChinaSelections(venues, micFamily)) {
             return [...LimitUsageUtil.GMI_ACCOUNT_TYPE_STRING];
-        } else if (this.hasOnlyChinaSelections(venues, micFamilies)) {
+        } else if (this.hasOnlyChinaSelections(venues, micFamily)) {
             return [...LimitUsageUtil.ALL_ACCOUNT_TYPE_STRINGS];
-        } else if (this.hasMixedSelections(venues, micFamilies)) {
+        } else if (this.hasMixedSelections(venues, micFamily)) {
             NotificationBannerUtil.show(
                 'Please do not enter a mixture of China and Non-China market selections.',
                 NotificationTypes.WARNING,
@@ -598,6 +591,10 @@ export class LimitUsageUtil {
 
     public static mapOptionTypesToStrings(options: any): string[] {
         return options?.map((option: any) => option.value) || [];
+    }
+
+    public static mapOptionTypeToString(option: any): string {
+        return option?.value || '';
     }
 
     public static mapStringsToOptionElements(stringArray: string[]): JSX.Element[] {

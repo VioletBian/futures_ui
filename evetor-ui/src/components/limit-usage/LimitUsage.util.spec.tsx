@@ -37,7 +37,7 @@ describe('Limit usage util tests', () => {
         const limitUsageForm: any = limitUsageUtil.initialiseEmptyForm();
         expect(limitUsageForm.message).toEqual('');
         expect(limitUsageForm.venue).toEqual([]);
-        expect(limitUsageForm.micFamily).toEqual([]);
+        expect(limitUsageForm.micFamily).toEqual('');
         expect(limitUsageForm.limitUsageAlertThreshold).toEqual(null);
         expect(limitUsageForm.limitUsageAlertTime).toEqual('');
         expect(limitUsageForm.limitUsageAlertTimezone).toEqual('');
@@ -103,18 +103,17 @@ describe('Limit usage util tests', () => {
     it('should reject when waterfall uri is missing - mic families', async () => {
         limitUsageUtil.waterfallUri = '';
         await expect(limitUsageUtil.fetchMicFamilyFromWaterfall()).rejects.toEqual('No Waterfall uri found in config.');
-        expect(limitUsageUtil.hasOnlyChinaMicFamilies(['SFX'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['SFX'] as any)).toBeFalsy();
-        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['NON_CHINA'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasMixedMicFamilies(['SFX', 'NON_CHINA'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaMicFamilies('SFX')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies('SFX')).toBeFalsy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies('NON_CHINA')).toBeTruthy();
     });
 
     it('test hasOnlyChinaSelections/hasOnlyNonChinaSelections/hasMixedSelections', () => {
-        expect(limitUsageUtil.hasOnlyChinaSelections(['XINE'], [])).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyChinaSelections([], ['SFX'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaSelections(['XNSE'], [])).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaSelections([], ['NON_CHINA'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasMixedSelections(['XINE'], ['SFX'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaSelections(['XINE'], '')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaSelections([], 'SFX')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections(['XNSE'], '')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections([], 'NON_CHINA')).toBeTruthy();
+        expect(limitUsageUtil.hasMixedSelections(['XINE'], 'SFX')).toBeTruthy();
     });
 
     // ===== 原样转写段落 ===== 
@@ -280,19 +279,18 @@ describe('Limit usage util tests', () => {
     // 增量说明：覆盖新增的 MICFamily selector 相关工具函数分支
 
     it('test micFamily china/non-china/mixed selectors', () => {
-        expect(limitUsageUtil.hasOnlyChinaMicFamilies([])).toBeFalsy();
-        expect(limitUsageUtil.hasOnlyChinaMicFamilies(['SFX'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['SFX'] as any)).toBeFalsy();
-        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies(['NON_CHINA'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasMixedMicFamilies(['SFX', 'NON_CHINA'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaMicFamilies('')).toBeFalsy();
+        expect(limitUsageUtil.hasOnlyChinaMicFamilies('SFX')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies('SFX')).toBeFalsy();
+        expect(limitUsageUtil.hasOnlyNonChinaMicFamilies('NON_CHINA')).toBeTruthy();
     });
 
     it('test hasOnlyChinaSelections/hasOnlyNonChinaSelections/hasMixedSelections', () => {
-        expect(limitUsageUtil.hasOnlyChinaSelections(['XINE'], [])).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyChinaSelections([], ['SFX'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaSelections(['XNSE'], [])).toBeTruthy();
-        expect(limitUsageUtil.hasOnlyNonChinaSelections([], ['NON_CHINA'] as any)).toBeTruthy();
-        expect(limitUsageUtil.hasMixedSelections(['XINE'], ['SFX'] as any)).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaSelections(['XINE'], '')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyChinaSelections([], 'SFX')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections(['XNSE'], '')).toBeTruthy();
+        expect(limitUsageUtil.hasOnlyNonChinaSelections([], 'NON_CHINA')).toBeTruthy();
+        expect(limitUsageUtil.hasMixedSelections(['XINE'], 'SFX')).toBeTruthy();
     });
 
     it('should validate form - both MIC and MIC Family selected (mutual exclusion)', () => {
@@ -300,7 +298,7 @@ describe('Limit usage util tests', () => {
         const form = {
             ...goodForm,
             venue: ['XINE'],
-            micFamily: ['SFX']
+            micFamily: 'SFX'
         };
 
         expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
@@ -311,7 +309,7 @@ describe('Limit usage util tests', () => {
         );
     });
 
-    it('should validate form - micFamily only path (china/non-china mixed is invalid)', () => {
+    it('should validate form - legacy multi-value micFamily payload is invalid', () => {
         const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
         const form = {
             ...goodForm,
@@ -321,7 +319,7 @@ describe('Limit usage util tests', () => {
 
         expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
         expect(notificationSpy).toHaveBeenCalledWith(
-            'Please do not enter a mixture of China and Non-China MIC Families.',
+            'MIC Family only supports a single selection.',
             NotificationTypes.WARNING,
             false
         );
@@ -332,7 +330,7 @@ describe('Limit usage util tests', () => {
         const form = {
             ...goodForm,
             venue: [],
-            micFamily: ['']
+            micFamily: ''
         };
 
         expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
@@ -581,7 +579,7 @@ describe('Limit usage util tests', () => {
         const form = {
             ...goodForm,
             venue: ['XINE'],
-            micFamily: ['SFX']
+            micFamily: 'SFX'
         };
 
         expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
@@ -592,7 +590,7 @@ describe('Limit usage util tests', () => {
         );
     });
 
-    it('should validate form - micFamily only path (china/non-china mixed is invalid)', () => {
+    it('should validate form - legacy multi-value micFamily payload is invalid', () => {
         const notificationSpy = jest.spyOn(NotificationBannerUtil, 'show');
         const form = {
             ...goodForm,
@@ -602,14 +600,14 @@ describe('Limit usage util tests', () => {
 
         expect(limitUsageUtil.validateForm(form, true, false)).toBeFalsy();
         expect(notificationSpy).toHaveBeenCalledWith(
-            'Please do not enter a mixture of China and Non-China MIC Families.',
+            'MIC Family only supports a single selection.',
             NotificationTypes.WARNING,
             false
         );
     });
 
     it('should get account type options by micFamily selections', () => {
-        const options = limitUsageUtil.getAccountTypeOptions([], [{ value: 'SFX', label: 'SFX' }] as any);
+        const options = limitUsageUtil.getAccountTypeOptions([], { value: 'SFX', label: 'SFX' } as any);
         expect(options).toEqual([AccountType.GMI_ACCOUNT.toString(), AccountType.EXCHANGE_ACCOUNT.toString()]);
     });
 
@@ -628,7 +626,7 @@ describe('Limit usage util tests', () => {
             accountToEmailMappings,
             allChinaAccounts,
             [],
-            [{ value: 'SFX', label: 'SFX' }] as any,
+            { value: 'SFX', label: 'SFX' } as any,
             AccountType.GMI_ACCOUNT
         );
 

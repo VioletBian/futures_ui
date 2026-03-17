@@ -93,6 +93,7 @@ public class LimitUsageRuleTest {
         limitUsageRule = Mockito.spy(new LimitUsageRule(rule, application, activeAlerts));
 
         assertEquals("MICFamily", limitUsageRule.getVenueSelectorType());
+        assertEquals(new HashSet<>(Collections.singleton("SFX")), limitUsageRule.getVenueSelectorValues());
     }
 
     @Test
@@ -125,7 +126,7 @@ public class LimitUsageRuleTest {
     private AlertRule buildMicFamilyRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
             .setVenue(null)
-            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .setMicFamily("SFX")
             .build();
     }
 

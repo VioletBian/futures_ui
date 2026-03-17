@@ -72,7 +72,10 @@ public class LimitUsageRule {
     }
 
     public HashSet<String> getVenueSelectorValues() {
-        return alertRule.hasMicFamilySelection() ? alertRule.getMicFamily() : alertRule.getVenue();
+        // 中文注释：MicFamily 虽然收口为单值，但运行态继续暴露为集合视图，减少匹配与日志链路改动。
+        return alertRule.hasMicFamilySelection()
+            ? new HashSet<>(java.util.Collections.singleton(alertRule.getMicFamily()))
+            : alertRule.getVenue();
     }
 
     public boolean matchesVenueSelector(ClearingData.LimitUsage limitUsage) {

@@ -46,7 +46,7 @@ public class AlertRule implements Serializable {
     private Boolean settleAsFixed;
     private Boolean synthetic;
     private HashSet<String> venue;
-    private HashSet<String> micFamily;
+    private String micFamily;
     private String explanation;
     private String parsedExplanation;
     private AlertFieldComparisonMode.Modes explanationComparisonMode;
@@ -240,7 +240,7 @@ public class AlertRule implements Serializable {
 
     @JsonIgnore
     public boolean hasMicFamilySelection() {
-        return getMicFamily() != null && !getMicFamily().isEmpty();
+        return StringUtils.isNotBlank(getMicFamily());
     }
 
     @JsonIgnore
@@ -284,8 +284,8 @@ public class AlertRule implements Serializable {
         return venue;
     }
 
-    // 中文注释：当前 AlertRule 是最小重建版本，这个 accessor 仅补齐 LimitUsage 的 MICFamily 读取能力。
-    public HashSet<String> getMicFamily() {
+    // 中文注释：MicFamily 在当前单选语义下改为单个字符串，便于前后端保持一致契约。
+    public String getMicFamily() {
         return micFamily;
     }
 
