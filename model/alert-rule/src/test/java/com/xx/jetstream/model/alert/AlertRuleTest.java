@@ -710,6 +710,49 @@ public class AlertRuleTest {
         assertEquals(Value, rule.getLimitUsageAlertThreshold().getComparisonType());
     }
 
+    // 中文注释：覆盖 LimitUsage 新增的 MICFamily selector 映射和 helper 语义，确保 venue/micFamily 二选一逻辑在 model 层生效。
+    @Test
+    public void testLimitUsageRuleFieldsCanBeMappedWithMicFamily() throws JsonProcessingException {
+        String newJson = "{"
+            + "\"symphonyEnabled\": false,"
+            + "\"recapEmail\": false,"
+            + "\"genericEmail\": false,"
+            + "\"creationDateTime\": \"15-Feb-24 06:47:30.837\","
+            + "\"kerberos\": \"liyiyi\","
+            + "\"desktopPopup\": false,"
+            + "\"message\": \"alert message\","
+            + "\"micFamily\": ["
+            + "\"SGX_FAMILY\""
+            + "],"
+            + "\"accountId\": ["
+            + "\"INI04211\""
+            + "],"
+            + "\"limitUsageAlertThreshold\": {"
+            + "\"operator\": \">\","
+            + "\"comparisonType\": \"Value\","
+            + "\"value\": 85"
+            + "},"
+            + "\"enabled\": true"
+            + "}";
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        AlertRule rule = mapper.readValue(newJson, AlertRule.class);
+
+        assertEquals("alert message", rule.getMessage());
+        assertNull(rule.getVenue());
+        assertEquals(1, rule.getMicFamily().size());
+        assertTrue(rule.getMicFamily().contains("SGX_FAMILY"));
+        assertTrue(rule.hasMicFamilySelection());
+        assertFalse(rule.hasMicVenueSelection());
+        assertTrue(rule.hasValidLimitUsageVenueSelector());
+        assertEquals(1, rule.getAccountId().size());
+        assertTrue(rule.getAccountId().contains("INI04211"));
+        assertEquals(85, rule.getLimitUsageAlertThreshold().getValue());
+        assertEquals(">", rule.getLimitUsageAlertThreshold().getOperator());
+        assertEquals(Value, rule.getLimitUsageAlertThreshold().getComparisonType());
+    }
+
     @Test
     public void testLimitUsageRuleFields_LimitUsageAlertTime() throws JsonProcessingException {
         String newJson = "{"
@@ -773,6 +816,74 @@ public class AlertRuleTest {
 
         AlertRule rule = mapper.readValue(newJson, AlertRule.class);
         assertTrue(rule.isValid());
+    }
+
+    // 中文注释：覆盖 MICFamily selector 的有效规则校验，保证旧的 threshold/time-based 入口都能兼容新 selector。
+    @Test
+    public void testValidateLimitUsageRuleWithMicFamily() throws JsonProcessingException {
+        String newJson = "{"
+            + "\"symphonyEnabled\": false,"
+            + "\"recapEmail\": false,"
+            + "\"genericEmail\": false,"
+            + "\"creationDateTime\": \"15-Feb-24 06:47:30.837\","
+            + "\"kerberos\": \"liyiyi\","
+            + "\"desktopPopup\": false,"
+            + "\"message\": \"alert message\","
+            + "\"micFamily\": ["
+            + "\"SGX_FAMILY\""
+            + "],"
+            + "\"accountId\": ["
+            + "\"INI04211\""
+            + "],"
+            + "\"limitUsageAlertThreshold\": {"
+            + "\"operator\": \">\","
+            + "\"comparisonType\": \"Value\","
+            + "\"value\": 85"
+            + "},"
+            + "\"enabled\": true"
+            + "}";
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        AlertRule rule = mapper.readValue(newJson, AlertRule.class);
+        assertTrue(rule.isValid());
+    }
+
+    // 中文注释：覆盖 MIC 与 MICFamily 互斥约束，避免同一条 LimitUsage 规则同时携带两个 selector。
+    @Test
+    public void testValidateLimitUsageRuleWithVenueAndMicFamily() throws JsonProcessingException {
+        String newJson = "{"
+            + "\"symphonyEnabled\": false,"
+            + "\"recapEmail\": false,"
+            + "\"genericEmail\": false,"
+            + "\"creationDateTime\": \"15-Feb-24 06:47:30.837\","
+            + "\"kerberos\": \"liyiyi\","
+            + "\"desktopPopup\": false,"
+            + "\"message\": \"alert message\","
+            + "\"venue\": ["
+            + "\"XINE\""
+            + "],"
+            + "\"micFamily\": ["
+            + "\"SGX_FAMILY\""
+            + "],"
+            + "\"accountId\": ["
+            + "\"INI04211\""
+            + "],"
+            + "\"limitUsageAlertThreshold\": {"
+            + "\"operator\": \">\","
+            + "\"comparisonType\": \"Value\","
+            + "\"value\": 85"
+            + "},"
+            + "\"enabled\": true"
+            + "}";
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        AlertRule rule = mapper.readValue(newJson, AlertRule.class);
+        assertTrue(rule.hasMicVenueSelection());
+        assertTrue(rule.hasMicFamilySelection());
+        assertFalse(rule.hasValidLimitUsageVenueSelector());
+        assertFalse(rule.isValid());
     }
 
     @Test
@@ -906,6 +1017,34 @@ public class AlertRuleTest {
 
         AlertRule rule = mapper.readValue(newJson, AlertRule.class);
         assertFalse(rule.isValid());
+    }
+
+    // 中文注释：覆盖 time-based LimitUsage 规则走 MICFamily selector 时的合法性判断。
+    @Test
+    public void testValidateLimitUsageRuleWithMicFamilyLimitUsageAlertTime() throws JsonProcessingException {
+        String newJson = "{"
+            + "\"symphonyEnabled\": false,"
+            + "\"recapEmail\": false,"
+            + "\"genericEmail\": false,"
+            + "\"creationDateTime\": \"15-Feb-24 06:47:30.837\","
+            + "\"kerberos\": \"liyiyi\","
+            + "\"desktopPopup\": false,"
+            + "\"message\": \"alert message\","
+            + "\"micFamily\": ["
+            + "\"SGX_FAMILY\""
+            + "],"
+            + "\"accountId\": ["
+            + "\"INI04211\""
+            + "],"
+            + "\"limitUsageAlertTime\": \"15:00\","
+            + "\"limitUsageAlertTimezone\": \"Asia/Hong_Kong\","
+            + "\"enabled\": true"
+            + "}";
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        AlertRule rule = mapper.readValue(newJson, AlertRule.class);
+        assertTrue(rule.isValid());
     }
 
     @Test
