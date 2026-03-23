@@ -19,6 +19,7 @@ import org.apache.commons.lang3.StringUtils;
 @JsonDeserialize(builder = AlertRule.AlertRuleBuilder.class)
 public class AlertRule implements Serializable {
 
+    // Rule options
     private Long expiryTimestamp;
     private String id;
     private int version;
@@ -26,94 +27,114 @@ public class AlertRule implements Serializable {
     private String kerberos;
     private String targetDesk;
     private String message;
-    private String emailAddress;
-    private String clientEmailAddress;
-    private String recapTemplateName;
-    private String orderByte;
-    private String recapTemplateId;
-    private boolean enabled;
-    private boolean softDelete;
-    private boolean recapEmail;
-    private boolean clientRecapEmail;
-    private boolean bbgAlert;
-    private boolean clientLimitUsageEmail;
-    private boolean hasHistoricalClientRecapEmail;
-    private boolean hasHistoricalBbgAlert;
-    private boolean hasHistoricalClientLimitUsageEmail;
+    private String orderId;
+    private String parsedOrderId;
+    private AlertFieldComparisonMode.Modes orderIdComparisonMode;
+    private HierarchyType orderLevel;
     private AlertTrigger alertTrigger;
-    private String creationDateTime;
-    private boolean genericEmail;
-    private boolean symphonyEnabled;
-    private boolean internalTCAReport;
-    private boolean elixirReport;
-    private boolean externalTCAReport;
+    private Long latencyThresholdMs;
+
+    // Field matchers
+    private boolean enabled;
     private HashSet<String> creatorId;
-    private String audioFilename;
-    private String symphonyRoomName;
-    private String symphonyTeamRoomName;
-    private boolean audioEnabled;
     private HashSet<String> customerTrader;
     private HashSet<String> accountId;
-    private HashSet<String> bbgUUID;
     private HashSet<Order.Type> tradingAlgorithm;
     private InstrumentSymbols.Type instrumentSymbolType;
     private String instrumentSymbol;
     private String parsedInstrumentSymbol;
     private AlertFieldComparisonMode.Modes instrumentSymbolComparisonMode;
     private Order.InteractionLevel interactionLevel;
-    private HashSet<Order.TimeInForce> timeInForce;
     private HashSet<PrefixEnum<Order.Status>> orderStatus;
-    private String orderId;
-    private String parsedOrderId;
-    private AlertFieldComparisonMode.Modes orderIdComparisonMode;
-    private HierarchyType orderLevel;
+    private String mic;
+    private String sourceChannel;
+    private StatComparison<Double> quantity;
+    private StatComparison<Double> filledQuantity;
+    private Boolean hasLimit;
+    private OrderData.Order.WholesaleIndicatorType wholesaleIndicatorType;
+    private Boolean settleAsFixed;
+    private Boolean synthetic;
+    private HashSet<String> venue;
+    private HashSet<String> micFamily;
+    private String explanation;
+    private String parsedExplanation;
+    private AlertFieldComparisonMode.Modes explanationComparisonMode;
+    private String traderRegion;
+    private String capacity;
+    private String alertColour;
+    private Boolean isClient;
+    private HashSet<String> creatorFoxDesk;
+    private Boolean toastNotification;
+    private OrderData.Order.TransactionType transactionType;
+    private Boolean overfilled;
+    private HashSet<String> bbgUUID;
+    private Boolean isClaimed;
+    private Order.CancelReason cancelReason;
+    private Order.RejectReason rejectReason;
+    private HashSet<Order.TimeInForce> timeInForce;
+    private HashSet<Coverage.Alert.SensitiveAlertType> sensitiveAlertTypes;
+
+    // Notification options
+    private boolean symphonyEnabled;
+    private boolean audioEnabled;
+    private boolean softDelete;
+    private boolean recapEmail;
+    private boolean genericEmail;
+    private boolean clientRecapEmail; // Used for external client mails
+    private boolean hasHistoricalClientRecapEmail;
+    private boolean bbgAlert;
+    private boolean hasHistoricalBbgAlert;
+    private boolean clientLimitUsageEmail;
+    private boolean hasHistoricalClientLimitUsageEmail;
+    private Boolean desktopPopup;
+    private String audioFilename;
+    private String creationDateTime;
+    private boolean sendOrderDetailsInSymphony;
+    private String symphonyRoomName;
+    private String symphonyTeamRoomName; // Structural carry-over from previously confirmed workspace usage.
+    private boolean internalTCAReport;
+    private boolean externalTCAReport;
+    private boolean elixirReport;
+    private Boolean resolvable;
+    private Boolean snoozable;
+    private Boolean notifyViaLaunchpad;
+
+    // Recap options
+    private String emailAddress;
+    private String clientEmailAddress;
+    private String recapTemplateName;
+    private String recapTemplateId;
+
+    // Algo options
     private StatComparison<Double> participationRateComparison;
     private StatComparison<Double> aheadBehindComparison;
     private StatComparison<Double> executionScheduleComparison;
     private StatComparison<Double> minQtyComparison;
     private StatComparison<Double> splitQtyComparison;
     private Boolean autoExecutionSchedule;
-    private Boolean outsidePriceLimit;
     private TimeComparison activationComparison;
-    private Boolean desktopPopup;
-    private String mic;
-    private String sourceChannel;
-    private StatComparison<Double> quantity;
-    private StatComparison<Double> filledQuantity;
-    private Boolean hasLimit;
-    private Order.WholesaleIndicatorType wholesaleIndicatorType;
-    private Boolean settleAsFixed;
-    private Boolean synthetic;
-    private Long latencyThresholdMs;
-    private HashSet<String> venue;
-    private HashSet<String> micFamily;
-    private HashSet<Coverage.Alert.SensitiveAlertType> sensitiveAlertTypes;
-    private String explanation;
-    private String parsedExplanation;
-    private AlertFieldComparisonMode.Modes explanationComparisonMode;
-    private String traderRegion;
-    private OrderData.Order.TransactionType transactionType;
-    private String capacity;
-    private String alertColour;
-    private Boolean isClient;
-    private boolean sendOrderDetailsInSymphony;
-    private Boolean toastNotification;
-    private HashSet<String> creatorFoxDesk;
+    private Boolean outsidePriceLimit;
+
+    // Base Rule ID
     private String baseRuleId;
+
+    // Rule Schedule
     private String activeFrom;
     private String activeTo;
-    private Boolean overfilled;
-    private Boolean isClaimed;
-    private Order.CancelReason cancelReason;
-    private Order.RejectReason rejectReason;
-    private Boolean resolvable;
-    private Boolean snoozable;
+
+    // Time options
+    private String orderByte;
+
+    // Limit Usage Alert options
     private StatComparison<Double> limitUsageAlertThreshold;
     private String limitUsageAlertTime;
     private String limitUsageAlertTimezone;
-    private Boolean notifyViaLaunchpad;
+
+    // Multi leg algo alerts
     private Boolean hasOverfilledLeg;
     private Boolean isLegged;
+
+    // Fields for Alert Priority
     private String alertCategory;
     private int priority;
     private HashSet<String> actorsSet;
@@ -494,7 +515,7 @@ public class AlertRule implements Serializable {
         return hasLimit;
     }
 
-    public Order.WholesaleIndicatorType getWholesaleIndicatorType() {
+    public OrderData.Order.WholesaleIndicatorType getWholesaleIndicatorType() {
         return wholesaleIndicatorType;
     }
 
@@ -1251,7 +1272,7 @@ public class AlertRule implements Serializable {
             return this;
         }
 
-        public AlertRuleBuilder setWholesaleIndicatorType(Order.WholesaleIndicatorType wholesaleIndicatorType) {
+        public AlertRuleBuilder setWholesaleIndicatorType(OrderData.Order.WholesaleIndicatorType wholesaleIndicatorType) {
             building.wholesaleIndicatorType = wholesaleIndicatorType;
             return this;
         }
