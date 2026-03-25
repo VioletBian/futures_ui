@@ -466,7 +466,30 @@ class LimitUsageAlertSourceTest {
         ScheduledFuture future = mock(ScheduledFuture.class);
         when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
         when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
-            .thenReturn(buildMicFamilyTimeBasedResponse("NON_SFX"));
+            .thenReturn(buildMicFamilyTimeBasedResponse("UNKNOWN", "NON_SFX"));
+        doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
+
+        limitUsageAlertSource.processNewAlertRule(rule);
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).schedule(runnableCaptor.capture(), anyLong(), any(TimeUnit.class));
+        Runnable scheduledTask = runnableCaptor.getValue();
+        scheduledTask.run();
+
+        verify(alertEngine, Mockito.never()).process(any(List.class));
+    }
+
+    @Test
+    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyMatchesButConcreteMicSkipsAlert() {
+        // 中文注释：覆盖 corner case，若快照同时带真实 mic 和 micFamily，则不应被当成 GMI 聚合级数据触发告警。
+        AlertRule rule = buildMicFamilyTimeBasedAlertRule();
+        limitUsageAlertSource.setScheduler(scheduler);
+        limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
+
+        ScheduledFuture future = mock(ScheduledFuture.class);
+        when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
+        when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
+            .thenReturn(buildMicFamilyTimeBasedResponse("XZCE", "SFX"));
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
 
         limitUsageAlertSource.processNewAlertRule(rule);
@@ -631,7 +654,7 @@ class LimitUsageAlertSourceTest {
             .build();
     }
 
-    private String buildMicFamilyTimeBasedResponse(String micFamily) {
+    private String buildMicFamilyTimeBasedResponse(String mic, String micFamily) {
         return "{\n" +
             "\"04860800\": {\n" +
             "\"id\": \"ZCI02972-1737424527567\",\n" +
@@ -640,7 +663,7 @@ class LimitUsageAlertSourceTest {
             "\"type\": \"Margin\",\n" +
             "\"usage\": 8258828.927051164,\n" +
             "\"limit\": 11625315.71098684,\n" +
-            "\"mic\": \"XZCE\",\n" +
+            "\"mic\": \"" + mic + "\",\n" +
             "\"micFamily\": \"" + micFamily + "\",\n" +
             "\"currency\": \"USD\",\n" +
             "\"accounts\": [\n" +

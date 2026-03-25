@@ -100,9 +100,18 @@
 
 `MICFamily` 表示一个 “Mic合集” 维度。
 
-因此在规则匹配阶段，不能只保留旧的 “事件 mic 命中规则 mic 集合” 逻辑，还需要支持：
+这次最新确认的真实业务前提是：
+
+- `micFamily` 规则的目标账号类型是 `GMI`
+- 该账号类型代表多个交易所子账号合并后的聚合账号
+- 客户只知道这个聚合账号整体的资金占用量，不知道、也不关心每个具体 `mic` 的拆分占用
+- 因此这类新 `LimitUsage` 原型实际到达中台时，是 `micFamily=SFX` 且 `mic=UNKNOWN`
+- 对这种聚合账号，系统不会提供可用于告警判断的 `mic level` LimitUsage 数据，只会提供 `micFamily level` 数据
+
+因此在规则匹配阶段，不能只保留旧的 “事件 mic 命中规则 mic 集合” 逻辑，还需要支持并明确约束：
 
 - 事件 `micFamily` 命中规则 `micFamily` 集合
+- 当规则是 `micFamily` 规则时，命中的应当是聚合级别的 LimitUsage 数据，也就是 `mic` 为空或 `UNKNOWN`
 
 ### 3. 兼容旧规则
 
@@ -113,6 +122,7 @@
 - 旧规则读出来后，仍按原有 `MIC` 逻辑工作
 - 新规则可以表达 `MICFamily`
 - 运行态根据 selector 类型分支匹配
+- `MICFamily` 规则不应因为一条同时带真实 `mic` 和 `micFamily` 的混合 payload 而误触发
 
 ## 对实现方式的约束
 

@@ -60,6 +60,24 @@ flowchart LR
 - 再由运行态规则实例去校验实时数据或定时拉取的快照
 - 只有规则命中时才会生成 alert 并进入通知链路
 
+## 新确认的业务前提
+
+这次又明确了一层此前文档里没有写实的业务约束：
+
+- 新增 `MICFamily` 不是为了给已有 `MIC` 数据再加一个辅助字段
+- 而是为了支持“客户子账号合并”之后的聚合账号视角
+- 该类账号的账号类型是 `GMI`
+- 客户只知道一个大的聚合账号在若干交易所上的总资金占用量，不知道每个具体 `mic` 的拆分
+- 因此这类 `LimitUsage` 到中台时，实际语义是 `micFamily=SFX`、`mic=UNKNOWN`
+- 对应账号不会再提供可用于告警判断的 `mic level` LimitUsage 数据，只会有 `micFamily level` 数据
+
+所以对 `LimitUsage Alert` 来说：
+
+- 旧规则仍然可以按 `MIC` 命中传统的 `mic level` 数据
+- 新规则若选择 `MICFamily`，命中的应是聚合级别 `LimitUsage`
+- 这类命中不应该依赖真实 `mic`
+- 如果出现同时带真实 `mic` 与 `micFamily` 的混合 payload，它更像是不符合当前业务前提的异常数据，而不是 `MICFamily` 规则应该正常命中的标准输入
+
 ## 模块职责
 
 从当前已确认代码看，LimitUsage Alert 至少跨以下模块：
@@ -190,6 +208,12 @@ flowchart LR
 
 - `clientRefId`
 - GMI synonym
+
+结合最新业务前提，这里的 selector 语义需要更精确地理解为：
+
+- `MIC` 规则匹配 `mic level` LimitUsage
+- `MICFamily` 规则匹配 `micFamily level` / GMI 聚合级 LimitUsage
+- 对 `MICFamily` 规则，`mic` 只是占位值，预期是 `UNKNOWN` 或空值，不应再作为真实 venue 参与命中判断
 
 因此这里不是“原始数据一进来就直接发 alert”，而是：
 

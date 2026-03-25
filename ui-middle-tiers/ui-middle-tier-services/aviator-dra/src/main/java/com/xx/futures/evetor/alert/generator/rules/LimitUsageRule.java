@@ -5,6 +5,7 @@ public class LimitUsageRule {
     private static final OctaneLogger LOG = LogUtility.getLogger();
     private static final String MIC_SELECTOR = "MIC";
     private static final String MIC_FAMILY_SELECTOR = "MICFamily";
+    private static final String UNKNOWN_MIC = "UNKNOWN";
 
     private final AlertRule alertRule;
     private final Common.Application application;
@@ -81,11 +82,12 @@ public class LimitUsageRule {
             return false;
         }
 
-        // 中文注释：强类型的 limit usage 事件现在已经具备 micFamily getter，这里直接读取 proto 字段，不再保留反射兼容逻辑。
+        // 中文注释：MICFamily 规则只应命中聚合级 limit usage；这类数据的 mic 预期为 UNKNOWN/空值，避免真实 mic 的混合 payload 误触发。
         String selectorValue = alertRule.hasMicFamilySelection()
             ? normalizeSelectorValue(limitUsage.getMicFamily())
             : normalizeSelectorValue(limitUsage.getMic());
-        return StringUtils.isNotBlank(selectorValue) && selectorValues.contains(selectorValue);
+        String micValue = normalizeSelectorValue(limitUsage.getMic());
+        return matchesSelectorValue(selectorValues, selectorValue, micValue);
     }
 
     // 中文注释：time-based 规则拿到快照后先按 selector 过滤，只保留真正命中 MIC / MICFamily 的账户。
@@ -118,7 +120,8 @@ public class LimitUsageRule {
         String selectorValue = alertRule.hasMicFamilySelection()
             ? getSnapshotMicFamily(snapshotEntry)
             : getSnapshotMic(snapshotEntry);
-        return StringUtils.isNotBlank(selectorValue) && selectorValues.contains(selectorValue);
+        String micValue = getSnapshotMic(snapshotEntry);
+        return matchesSelectorValue(selectorValues, selectorValue, micValue);
     }
 
     public Long getTimestamp() {
@@ -142,6 +145,31 @@ public class LimitUsageRule {
 
     private String getSnapshotMicFamily(java.util.Map<?, ?> limitUsageEntry) {
         return normalizeSelectorValue(limitUsageEntry.get("micFamily"));
+    }
+
+    // 中文注释：把 MICFamily 的“聚合级数据”约束收敛在同一个 helper，确保实时与 time-based 路径完全一致。
+    private boolean matchesSelectorValue(
+        HashSet<String> selectorValues,
+        String selectorValue,
+        String micValue
+    ) {
+        if (StringUtils.isBlank(selectorValue) || selectorValues == null || selectorValues.isEmpty()) {
+            return false;
+        }
+
+        if (!selectorValues.contains(selectorValue)) {
+            return false;
+        }
+
+        if (!alertRule.hasMicFamilySelection()) {
+            return true;
+        }
+
+        return isMicFamilyAggregateLimitUsage(micValue);
+    }
+
+    private boolean isMicFamilyAggregateLimitUsage(String micValue) {
+        return StringUtils.isBlank(micValue) || UNKNOWN_MIC.equalsIgnoreCase(micValue);
     }
 
     private String normalizeSelectorValue(Object rawValue) {
