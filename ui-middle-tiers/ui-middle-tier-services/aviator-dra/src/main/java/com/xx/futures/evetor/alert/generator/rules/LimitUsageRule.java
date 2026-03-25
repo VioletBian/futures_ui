@@ -37,7 +37,7 @@ public class LimitUsageRule {
                 "Limit usage is - Id:[{}] | Mic:[{}] | MicFamily:[{}] | ClientRefId:[{}] | GMI:[{}] | Usage:[{}]",
                 limitUsage.getId(),
                 limitUsage.getMic(),
-                getLimitUsageMicFamily(limitUsage),
+                normalizeSelectorValue(limitUsage.getMicFamily()),
                 limitUsage.getClientRefId(),
                 getGmiSynonymForLimitUsage(limitUsage),
                 calculatePercentage(limitUsage)
@@ -81,9 +81,10 @@ public class LimitUsageRule {
             return false;
         }
 
+        // 中文注释：强类型的 limit usage 事件现在已经具备 micFamily getter，这里直接读取 proto 字段，不再保留反射兼容逻辑。
         String selectorValue = alertRule.hasMicFamilySelection()
-            ? getLimitUsageMicFamily(limitUsage)
-            : limitUsage.getMic();
+            ? normalizeSelectorValue(limitUsage.getMicFamily())
+            : normalizeSelectorValue(limitUsage.getMic());
         return StringUtils.isNotBlank(selectorValue) && selectorValues.contains(selectorValue);
     }
 
@@ -103,14 +104,20 @@ public class LimitUsageRule {
     }
 
     public boolean matchesVenueSelector(Object limitUsageEntry) {
+        if (!(limitUsageEntry instanceof java.util.Map<?, ?>)) {
+            return false;
+        }
+
         HashSet<String> selectorValues = getVenueSelectorValues();
         if (selectorValues == null || selectorValues.isEmpty()) {
             return false;
         }
 
+        java.util.Map<?, ?> snapshotEntry = (java.util.Map<?, ?>) limitUsageEntry;
+        // 中文注释：time-based 快照仍然来自 HTTP JSON 反序列化结果，这里只保留 map 读取逻辑。
         String selectorValue = alertRule.hasMicFamilySelection()
-            ? getLimitUsageMicFamily(limitUsageEntry)
-            : getLimitUsageMic(limitUsageEntry);
+            ? getSnapshotMicFamily(snapshotEntry)
+            : getSnapshotMic(snapshotEntry);
         return StringUtils.isNotBlank(selectorValue) && selectorValues.contains(selectorValue);
     }
 
@@ -129,36 +136,12 @@ public class LimitUsageRule {
         return containsGmiSynonym || containsClientRefId;
     }
 
-    // 中文注释：当前 workspace 没有完整重建 protobuf 代码，反射读取 getMicFamily() 可以兼容运行时已有字段。
-    private String getLimitUsageMicFamily(ClearingData.LimitUsage limitUsage) {
-        return extractSelectorValue(limitUsage, "getMicFamily");
+    private String getSnapshotMic(java.util.Map<?, ?> limitUsageEntry) {
+        return normalizeSelectorValue(limitUsageEntry.get("mic"));
     }
 
-    private String getLimitUsageMic(Object limitUsageEntry) {
-        if (limitUsageEntry instanceof java.util.Map) {
-            return normalizeSelectorValue(((java.util.Map<?, ?>) limitUsageEntry).get("mic"));
-        }
-        return extractSelectorValue(limitUsageEntry, "getMic");
-    }
-
-    private String getLimitUsageMicFamily(Object limitUsageEntry) {
-        if (limitUsageEntry instanceof java.util.Map) {
-            return normalizeSelectorValue(((java.util.Map<?, ?>) limitUsageEntry).get("micFamily"));
-        }
-        return extractSelectorValue(limitUsageEntry, "getMicFamily");
-    }
-
-    private String extractSelectorValue(Object target, String getterName) {
-        if (target == null) {
-            return null;
-        }
-
-        try {
-            java.lang.reflect.Method getter = target.getClass().getMethod(getterName);
-            return normalizeSelectorValue(getter.invoke(target));
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+    private String getSnapshotMicFamily(java.util.Map<?, ?> limitUsageEntry) {
+        return normalizeSelectorValue(limitUsageEntry.get("micFamily"));
     }
 
     private String normalizeSelectorValue(Object rawValue) {
