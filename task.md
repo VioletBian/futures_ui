@@ -144,6 +144,46 @@
 - `AlertsRestBase` 只需要作为“`ConfigServerDao` 背后存在 `AlertRule` endpoint”的关系证据
 - 不需要在本任务里整份重现
 
+### 2.1 time-based 路径不要吞掉空数据告警语义
+
+review 明确指出：
+
+- `scheduleTimeBasedRule(...)` 里不能因为预过滤后的数据为空就直接 `return`
+- 旧链路允许“无有效 limit usage 行”的情况继续往下游走
+- 下游会基于空 `message` 触发 ERROR 类提示邮件，帮助发现 limit usage 数据缺失问题
+
+因此后续实现中：
+
+- 不能用一个新的上游过滤分支把这类问题静默吃掉
+- 要保留 time-based 空数据 / 无有效行时继续生成 alert 的语义
+
+### 2.2 优先扩展 Source 里已有的 JSON 解析与表格生成链路
+
+review 明确指出：
+
+- `LimitUsageAlertSource` 已有 `getTableContent` / `getBody` / `isValidLimitUsage` 这条 time-based JSON 处理链路
+- selector 相关的 snapshot 解析应优先在这条已有链路上扩展
+- 不应在 `LimitUsageRule` 里额外长出一套 map 级校验 / 过滤函数，把 time-based 逻辑分叉出去
+
+因此后续实现中：
+
+- `Source` 负责 snapshot row 的解析、校验、筛选和表格内容生成
+- `Rule` 负责 selector 元信息、规则匹配和基于规则本身的 helper
+
+### 2.3 规则本身的 helper 应尽量收回到 LimitUsageRule
+
+review 给出的重构方向是：
+
+- 接近 data parsing / snapshot row handling 的函数留在 `LimitUsageAlertSource`
+- 接近 `AlertRule` / `LimitUsageRule` 本身属性和 alert 组装的函数，尽量迁移到 `LimitUsageRule`
+
+典型例子包括：
+
+- `getTimeToTriggerForRule`
+- `getTimeBasedAlertId`
+- `getTimeBasedLimitUsageAlert`
+- `getTimeBasedLimitUsageAlertActivity`
+
 ### 3. 缺事实时不要猜
 
 如果在实现过程中缺少关键事实：

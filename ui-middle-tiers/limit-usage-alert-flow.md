@@ -229,6 +229,11 @@ flowchart LR
 - 到点后不是等实时消息，而是主动拉 `/limitusage/accounts`
 - 用拉回来的 snapshot 做一次规则计算
 
+结合 review 新确认的约束，这条链路还需要额外注意两点：
+
+- selector 对 snapshot row 的筛选应优先收敛在 `LimitUsageAlertSource` 现有的 `getBody / getTableContent / isValidLimitUsage` 链路，而不是在 `LimitUsageRule` 里先做 map 级预过滤
+- 即便最终没有拿到有效 row，也不能因为一次新的上游过滤就直接吞掉后续处理；旧链路允许下游看到空 `message`，从而发出 ERROR 类提示邮件暴露数据缺失问题
+
 这说明 threshold 与 time-based 的核心差别是：
 
 - threshold：实时消息驱动
