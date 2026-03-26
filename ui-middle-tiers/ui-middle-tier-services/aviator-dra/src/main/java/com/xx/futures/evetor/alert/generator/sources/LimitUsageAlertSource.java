@@ -192,24 +192,15 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
                 );
                 Map<String, Object> data =
                     objectMapper.readValue(response, new TypeReference<>() {});
-                // 中文注释：time-based 告警在真正生成前先按 MIC / MICFamily 过滤快照，保证 selector 语义与实时路径一致。
-                Map<String, Object> filteredData = limitUsageRule.filterMatchingLimitUsages(data);
                 LOG.info(
-                    "Received limit usage data [{}] and filtered data [{}] for rule [{}]",
+                    "Received limit usage data [{}] for rule [{}] with selector type=[{}] values=[{}]",
                     data,
-                    filteredData,
-                    alertRule.getId()
+                    alertRule.getId(),
+                    limitUsageRule.getVenueSelectorType(),
+                    limitUsageRule.getVenueSelectorValues()
                 );
-                if (filteredData.isEmpty()) {
-                    LOG.info(
-                        "Skipping time-based limit usage alert for rule [{}] because no snapshot rows matched selector type=[{}] values=[{}]",
-                        alertRule.getId(),
-                        limitUsageRule.getVenueSelectorType(),
-                        limitUsageRule.getVenueSelectorValues()
-                    );
-                    return;
-                }
-                alertEngine.process(generateNewAlerts(limitUsageRule, filteredData));
+                // 中文注释：不要在 Source 入口先把无匹配 row 的快照吞掉；旧链路需要让空 message 继续流向下游，触发 ERROR 类提示邮件。
+                alertEngine.process(generateNewAlerts(limitUsageRule, data));
             } catch (JsonProcessingException e) {
                 String errorMessage = String.format(
                     "Unable to retrieve margin usage data for alert rule [%s], accountsIds "
@@ -297,7 +288,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         LimitUsageRule limitUsageRule,
         Map<String, Object> limitUsageMap
     ) {
-        if (limitUsageMap == null || limitUsageMap.isEmpty()) {
+        if (limitUsageMap == null) {
             return null;
         }
 
@@ -311,7 +302,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
             getTimeToTriggerForRule(alertRule)
         );
         UnpublishedAlert alert =
-            new ImmediateAlert(getTimeBasedLimitUsageAlert(alertRule, getTimestamp(), limitUsageMap));
+            new ImmediateAlert(getTimeBasedLimitUsageAlert(limitUsageRule, getTimestamp(), limitUsageMap));
         return List.of(alert);
     }
 
@@ -320,26 +311,28 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     }
 
     public Alert getTimeBasedLimitUsageAlert(
-        AlertRule alertRule,
+        LimitUsageRule limitUsageRule,
         long timestamp,
         Map<String, Object> limitUsageMap
     ) {
+        AlertRule alertRule = limitUsageRule.getAlertRule();
         String alertId = getTimeBasedAlertId(alertRule);
         Alert.AlertActivity alertActivity =
-            getTimeBasedLimitUsageAlertActivity(alertRule, timestamp, limitUsageMap);
+            getTimeBasedLimitUsageAlertActivity(limitUsageRule, timestamp, limitUsageMap);
         return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
     }
 
     public Alert.AlertActivity getTimeBasedLimitUsageAlertActivity(
-        AlertRule alertRule,
+        LimitUsageRule limitUsageRule,
         long timestamp,
         Map<String, Object> limitUsageMap
     ) {
+        AlertRule alertRule = limitUsageRule.getAlertRule();
         String snapshotTime = getTimeToTriggerForRule(alertRule);
         String alertGeneratedDate =
             getAlertGeneratedDate(alertRule.getLimitUsageAlertTimezone());
         String alertMessage =
-            getTimeBasedAlertRuleBreachingMessage(limitUsageMap, snapshotTime, alertGeneratedDate);
+            getTimeBasedAlertRuleBreachingMessage(limitUsageRule, limitUsageMap, snapshotTime, alertGeneratedDate);
         return AlertUtils.createLimitUsageAlertActivity(timestamp, alertRule, alertMessage);
     }
 
@@ -357,7 +350,17 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         String snapshotTime,
         String alertDate
     ) {
-        String tableContent = getTableContent(limitUsageMap);
+        return getTimeBasedAlertRuleBreachingMessage(null, limitUsageMap, snapshotTime, alertDate);
+    }
+
+    // 中文注释：time-based selector 的 snapshot 校验和筛选应沿用 Source 既有的 JSON 渲染链路，而不是在 Rule 层提前过滤掉整包数据。
+    public String getTimeBasedAlertRuleBreachingMessage(
+        LimitUsageRule limitUsageRule,
+        Map<String, Object> limitUsageMap,
+        String snapshotTime,
+        String alertDate
+    ) {
+        String tableContent = getTableContent(limitUsageRule, limitUsageMap);
 
         if (StringUtils.isBlank(tableContent)) {
             LOG.warn(
@@ -377,11 +380,15 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     }
 
     public String getTableContent(Map<String, Object> limitUsageMap) {
+        return getTableContent(null, limitUsageMap);
+    }
+
+    public String getTableContent(LimitUsageRule limitUsageRule, Map<String, Object> limitUsageMap) {
         StringBuilder table = new StringBuilder();
         for (Map.Entry<String, Object> entry : limitUsageMap.entrySet()) {
-            String contentRow = getBody(entry);
+            String contentRow = getBody(limitUsageRule, entry);
             if (StringUtils.isNotBlank(contentRow)) {
-                table.append(getBody(entry));
+                table.append(contentRow);
             } else {
                 LOG.warn(
                     "Account [{}] generated invalid data row based on Limit usage loader entry [{}]",
@@ -413,9 +420,13 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     }
 
     public String getBody(Map.Entry<String, Object> entry) {
+        return getBody(null, entry);
+    }
+
+    public String getBody(LimitUsageRule limitUsageRule, Map.Entry<String, Object> entry) {
         if (entry.getValue() instanceof Map) {
             Map<String, Object> limitUsage = (Map<String, Object>) entry.getValue();
-            if (!isValidLimitUsage(limitUsage)) {
+            if (!isValidLimitUsage(limitUsageRule, limitUsage) || !matchesSnapshotSelector(limitUsageRule, limitUsage)) {
                 return null;
             }
 
@@ -437,13 +448,43 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     }
 
     public boolean isValidLimitUsage(Map<String, Object> limitUsage) {
+        return isValidLimitUsage(null, limitUsage);
+    }
+
+    // 中文注释：在既有 usage/limit/currency 校验上，按 selector 类型补齐 snapshot 必需字段，避免 Source/Rule 各自维护一套 map 校验分支。
+    public boolean isValidLimitUsage(LimitUsageRule limitUsageRule, Map<String, Object> limitUsage) {
         List<String> columns = Arrays.asList("usage", "limit", "currency");
         for (String column : columns) {
             if (!limitUsage.containsKey(column) || ObjectUtils.isEmpty(limitUsage.get(column))) {
                 return false;
             }
         }
-        return true;
+
+        if (limitUsageRule == null) {
+            return true;
+        }
+
+        String selectorColumn = limitUsageRule.getAlertRule().hasMicFamilySelection()
+            ? "micFamily"
+            : "mic";
+        return limitUsage.containsKey(selectorColumn) && !ObjectUtils.isEmpty(limitUsage.get(selectorColumn));
+    }
+
+    private boolean matchesSnapshotSelector(LimitUsageRule limitUsageRule, Map<String, Object> limitUsage) {
+        if (limitUsageRule == null) {
+            return true;
+        }
+
+        java.util.HashSet<String> selectorValues = limitUsageRule.getVenueSelectorValues();
+        if (selectorValues == null || selectorValues.isEmpty()) {
+            return false;
+        }
+
+        String selectorColumn = limitUsageRule.getAlertRule().hasMicFamilySelection()
+            ? "micFamily"
+            : "mic";
+        Object selectorValue = limitUsage.get(selectorColumn);
+        return selectorValue != null && selectorValues.contains(String.valueOf(selectorValue));
     }
 
     public String format(String position, String value) {

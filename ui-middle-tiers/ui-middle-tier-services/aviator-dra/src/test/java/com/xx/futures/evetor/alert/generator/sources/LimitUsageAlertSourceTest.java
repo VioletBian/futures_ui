@@ -457,8 +457,8 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
-    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyNoMatchSkipsAlert() {
-        // 中文注释：覆盖 time-based 的 MICFamily 快照过滤，不命中 selector 时不应生成 alert。
+    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyNoMatchStillProcessesAlert() {
+        // 中文注释：即便 MICFamily selector 没命中，也要继续生成 alert 让下游拿到空 message，保留 ERROR 邮件语义。
         AlertRule rule = buildMicFamilyTimeBasedAlertRule();
         limitUsageAlertSource.setScheduler(scheduler);
         limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
@@ -476,30 +476,7 @@ class LimitUsageAlertSourceTest {
         Runnable scheduledTask = runnableCaptor.getValue();
         scheduledTask.run();
 
-        verify(alertEngine, Mockito.never()).process(any(List.class));
-    }
-
-    @Test
-    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyMatchesButConcreteMicSkipsAlert() {
-        // 中文注释：覆盖 corner case，若快照同时带真实 mic 和 micFamily，则不应被当成 GMI 聚合级数据触发告警。
-        AlertRule rule = buildMicFamilyTimeBasedAlertRule();
-        limitUsageAlertSource.setScheduler(scheduler);
-        limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
-
-        ScheduledFuture future = mock(ScheduledFuture.class);
-        when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
-        when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
-            .thenReturn(buildMicFamilyTimeBasedResponse("XZCE", "SFX"));
-        doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
-
-        limitUsageAlertSource.processNewAlertRule(rule);
-
-        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
-        verify(scheduler).schedule(runnableCaptor.capture(), anyLong(), any(TimeUnit.class));
-        Runnable scheduledTask = runnableCaptor.getValue();
-        scheduledTask.run();
-
-        verify(alertEngine, Mockito.never()).process(any(List.class));
+        verify(alertEngine).process(any(List.class));
     }
 
     @Test
@@ -612,6 +589,16 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
+    void testGenerateNewAlerts_emptyMapStillGeneratesAlert() {
+        // 中文注释：空 snapshot 也不能在 aviator-dra 里被短路吞掉，下游需要拿到空 message 才能发 ERROR 类提示邮件。
+        AlertRule rule = buildMicFamilyTimeBasedAlertRule();
+        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
+            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(rule, application, activeAlerts);
+
+        Assertions.assertEquals(1, limitUsageAlertSource.generateNewAlerts(limitUsageRule, new HashMap<>()).size());
+    }
+
+    @Test
     void testGetBodyWithValidLimitUsage() {
         Map<String, Object> limitUsage = new HashMap<>();
         limitUsage.put("usage", 11495905.20272978);
@@ -623,6 +610,44 @@ class LimitUsageAlertSourceTest {
             "<td style=\"text-align:center\">16167814.4</td><td style=\"text-align:center\">USD</td><td style=\"text-align:center\">71.1%</td></tr>";
         String actual = limitUsageAlertSource.getBody(entry);
         assertEquals(expected, actual);
+    }
+
+    @Test
+    void testGetBodyWithMicFamilyRuleAndMatchingSelector() {
+        // 中文注释：MICFamily snapshot 的 selector 过滤应在 Source.getBody 里完成，命中时仍沿用原有表格行输出。
+        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
+            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(
+                buildMicFamilyTimeBasedAlertRule(),
+                application,
+                activeAlerts
+            );
+        Map<String, Object> limitUsage = new HashMap<>();
+        limitUsage.put("usage", 11495905.20272978);
+        limitUsage.put("limit", 16167814.417355172);
+        limitUsage.put("currency", "USD");
+        limitUsage.put("micFamily", "SFX");
+
+        Map.Entry<String, Object> entry = new HashMap.SimpleEntry<>("55300015", limitUsage);
+        Assertions.assertNotNull(limitUsageAlertSource.getBody(limitUsageRule, entry));
+    }
+
+    @Test
+    void testGetBodyWithMicFamilyRuleAndNonMatchingSelector() {
+        // 中文注释：MICFamily selector 不命中时，Source.getBody 应返回 null，让上层保留空 message 的处理语义。
+        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
+            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(
+                buildMicFamilyTimeBasedAlertRule(),
+                application,
+                activeAlerts
+            );
+        Map<String, Object> limitUsage = new HashMap<>();
+        limitUsage.put("usage", 11495905.20272978);
+        limitUsage.put("limit", 16167814.417355172);
+        limitUsage.put("currency", "USD");
+        limitUsage.put("micFamily", "NON_SFX");
+
+        Map.Entry<String, Object> entry = new HashMap.SimpleEntry<>("55300015", limitUsage);
+        Assertions.assertNull(limitUsageAlertSource.getBody(limitUsageRule, entry));
     }
 
     @Test
@@ -639,7 +664,7 @@ class LimitUsageAlertSourceTest {
         assertEquals(1000, limitUsageAlertSource.getTimeDelay(1000));
     }
 
-    // 中文注释：MICFamily 相关 helper 只补本轮 selector 测试数据，尽量不动原有测试构造。
+    // 中文注释：MICFamily 相关 helper 只补 rule 级 selector 测试数据，time-based 的实际 row 过滤已回收到 Source.getBody 链路。
     private AlertRule buildMicFamilyLimitUsageAlertRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
             .setVenue(null)

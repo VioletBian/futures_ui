@@ -89,8 +89,8 @@ public class LimitUsageRuleTest {
     }
 
     @Test
-    void testShouldAlertAndProcess_ruleSatisfiedWithMicFamilyAggregateLimitUsage() {
-        // 中文注释：覆盖真实业务形态，GMI 聚合账号只有 micFamily 数据，mic 只是 UNKNOWN 占位值。
+    void testShouldAlertAndProcess_ruleSatisfiedWithMicFamilyLimitUsage() {
+        // 中文注释：覆盖 MICFamily selector 的 threshold 匹配，实时事件只要 micFamily 命中规则即可触发。
         rule = buildMicFamilyRule();
         limitUsageRule = Mockito.spy(new LimitUsageRule(rule, application, activeAlerts));
         Mockito.doReturn(1L).when(limitUsageRule).getTimestamp();
@@ -98,19 +98,6 @@ public class LimitUsageRuleTest {
         ClearingData.LimitUsage limitUsage = generateMicFamilyLimitUsage("SFX", "DCI03456", "04860800", 51d);
         assertTrue(limitUsageRule.shouldAlert(limitUsage));
         assertNotNull(limitUsageRule.process(limitUsage));
-    }
-
-    @Test
-    void testShouldAlertAndProcess_ruleNotSatisfiedWhenMicFamilyLimitUsageHasConcreteMic() {
-        // 中文注释：覆盖 corner case，若 payload 同时带真实 mic 与 micFamily，则不应被当成聚合级数据触发 micFamily 规则。
-        rule = buildMicFamilyRule();
-        limitUsageRule = Mockito.spy(new LimitUsageRule(rule, application, activeAlerts));
-        Mockito.doReturn(1L).when(limitUsageRule).getTimestamp();
-
-        ClearingData.LimitUsage limitUsage =
-            generateMicFamilyLimitUsage("XZCE", "SFX", "DCI03456", "04860800", 51d, Common.Currency.USD);
-        assertFalse(limitUsageRule.shouldAlert(limitUsage));
-        assertNull(limitUsageRule.process(limitUsage));
     }
 
     @Test
@@ -123,24 +110,17 @@ public class LimitUsageRuleTest {
     }
 
     @Test
-    void testFilterMatchingLimitUsages_ruleUsesMicFamilySelector() {
-        // 中文注释：覆盖 time-based 共享 selector 逻辑，MICFamily 规则只保留 mic=UNKNOWN/空值 且 micFamily 命中的聚合级快照行。
+    void testMatchesVenueSelector_ruleUsesMicFamilySelector() {
+        // 中文注释：MICFamily 规则在实时路径应直接读取 limitUsage.micFamily 与规则 selector 比较。
         rule = buildMicFamilyRule();
         limitUsageRule = Mockito.spy(new LimitUsageRule(rule, application, activeAlerts));
 
-        Map<String, Object> limitUsageMap = new HashMap<>();
-        limitUsageMap.put("04860800", buildLimitUsageSnapshot("UNKNOWN", "SFX"));
-        limitUsageMap.put("04860801", buildLimitUsageSnapshot("XZCE", "SFX"));
-        limitUsageMap.put("04860802", buildLimitUsageSnapshot("UNKNOWN", "NON_SFX"));
+        ClearingData.LimitUsage matchingLimitUsage = generateMicFamilyLimitUsage("SFX", "DCI03456", "04860800", 51d);
+        ClearingData.LimitUsage nonMatchingLimitUsage =
+            generateMicFamilyLimitUsage("NON_SFX", "DCI03456", "04860800", 51d);
 
-        Map<String, Object> filteredLimitUsages = limitUsageRule.filterMatchingLimitUsages(limitUsageMap);
-        assertEquals(1, filteredLimitUsages.size());
-        assertTrue(filteredLimitUsages.containsKey("04860800"));
-        assertFalse(filteredLimitUsages.containsKey("04860801"));
-        assertFalse(filteredLimitUsages.containsKey("04860802"));
-        assertTrue(limitUsageRule.matchesVenueSelector(filteredLimitUsages.get("04860800")));
-        assertFalse(limitUsageRule.matchesVenueSelector(limitUsageMap.get("04860801")));
-        assertFalse(limitUsageRule.matchesVenueSelector(limitUsageMap.get("04860802")));
+        assertTrue(limitUsageRule.matchesVenueSelector(matchingLimitUsage));
+        assertFalse(limitUsageRule.matchesVenueSelector(nonMatchingLimitUsage));
     }
 
     @Test
@@ -157,15 +137,5 @@ public class LimitUsageRuleTest {
             .setVenue(null)
             .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
             .build();
-    }
-
-    private Map<String, Object> buildLimitUsageSnapshot(String mic, String micFamily) {
-        Map<String, Object> limitUsageSnapshot = new HashMap<>();
-        limitUsageSnapshot.put("usage", 11495905.20272978);
-        limitUsageSnapshot.put("limit", 16167814.417355172);
-        limitUsageSnapshot.put("currency", "USD");
-        limitUsageSnapshot.put("mic", mic);
-        limitUsageSnapshot.put("micFamily", micFamily);
-        return limitUsageSnapshot;
     }
 }

@@ -135,14 +135,14 @@ public class TestUtils {
             .build();
     }
 
-    // 中文注释：补充 GMI 聚合账号的 limit usage 测试数据，业务上这类记录应走 micFamily 且 mic=UNKNOWN/占位值。
+    // 中文注释：补充带 micFamily 的 limit usage 测试数据，默认给一个可识别的 mic，避免把临时业务假设固化成公共测试前提。
     public static ClearingData.LimitUsage generateMicFamilyLimitUsage(
         String micFamily,
         String gmi,
         String clientRefId,
         double usage
     ) {
-        return generateMicFamilyLimitUsage("UNKNOWN", micFamily, gmi, clientRefId, usage, Common.Currency.USD);
+        return generateMicFamilyLimitUsage("XZCE", micFamily, gmi, clientRefId, usage, Common.Currency.USD);
     }
 
     public static ClearingData.LimitUsage generateMicFamilyLimitUsage(
