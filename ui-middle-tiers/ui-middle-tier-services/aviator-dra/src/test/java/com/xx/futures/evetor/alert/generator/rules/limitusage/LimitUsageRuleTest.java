@@ -131,11 +131,31 @@ public class LimitUsageRuleTest {
         );
     }
 
+    @Test
+    void testTimeBasedHelpers() {
+        // 中文注释：2.3 后 time-based rule 的 rule-centric helper 归到 LimitUsageRule，这里覆盖核心输出不再从 Source 断言。
+        rule = buildMicFamilyTimeBasedRule();
+        limitUsageRule = Mockito.spy(new LimitUsageRule(rule, application, activeAlerts));
+
+        assertEquals("04860801,04860800", limitUsageRule.getAccountsString());
+        assertEquals("10:20 Asia/Hong_Kong", limitUsageRule.getTimeToTriggerForRule());
+        assertEquals("04860801,04860800-0-RuleIdrule2", limitUsageRule.getTimeBasedAlertId());
+    }
+
     // 中文注释：MICFamily 相关 helper 只为本轮 selector 改造补测试数据，保持原有用例构造不变。
     private AlertRule buildMicFamilyRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
             .setVenue(null)
-            .setMicFamily(new HashSet<>(Collections.singleton("SFX")))
+            .setMicFamily(new java.util.HashSet<>(java.util.Collections.singleton("SFX")))
+            .build();
+    }
+
+    private AlertRule buildMicFamilyTimeBasedRule() {
+        return new AlertRule.AlertRuleBuilder(
+            com.xx.futures.evetor.utils.TestUtils.generateLimitUsageTimeBasedAlertRule()
+        )
+            .setVenue(null)
+            .setMicFamily(new java.util.HashSet<>(java.util.Collections.singleton("SFX")))
             .build();
     }
 }

@@ -23,7 +23,6 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
 
     private static final OctaneLogger LOG = LogUtility.getLogger();
     private static final String LIMIT_USAGE_LOADER_URL = "limitUsageLoaderUrl";
-    private static final String ACCOUNT_DELIMITER = ",";
     private static final String ACCOUNT_LIST_QUERY_PARAM = "accountlist";
     private static final long DAY_IN_MILLIS = 24 * 60 * 60 * 1000;
     private static final String dateFormat = "yyyyMMdd";
@@ -175,7 +174,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
     private void scheduleTimeBasedRule(LimitUsageRule limitUsageRule) {
         AlertRule alertRule = limitUsageRule.getAlertRule();
         long timeDelay = calculateTimeDelay(alertRule);
-        String accountIds = getAccountsString(alertRule);
+        String accountIds = limitUsageRule.getAccountsString();
         MultivaluedMap<String, String> queryParams = new MultivaluedHashMap<>();
         // 中文注释：time-based 快照接口当前收的是 accountlist，这里对齐已有 API 定义避免装载后查不到数据。
         queryParams.add(ACCOUNT_LIST_QUERY_PARAM, accountIds);
@@ -299,50 +298,16 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
             limitUsageRule.getVenueSelectorType(),
             limitUsageRule.getVenueSelectorValues(),
             alertRule.getAccountId(),
-            getTimeToTriggerForRule(alertRule)
+            limitUsageRule.getTimeToTriggerForRule()
         );
-        UnpublishedAlert alert =
-            new ImmediateAlert(getTimeBasedLimitUsageAlert(limitUsageRule, getTimestamp(), limitUsageMap));
-        return List.of(alert);
-    }
-
-    public String getTimeToTriggerForRule(AlertRule alertRule) {
-        return alertRule.getLimitUsageAlertTime() + " " + alertRule.getLimitUsageAlertTimezone();
-    }
-
-    public Alert getTimeBasedLimitUsageAlert(
-        LimitUsageRule limitUsageRule,
-        long timestamp,
-        Map<String, Object> limitUsageMap
-    ) {
-        AlertRule alertRule = limitUsageRule.getAlertRule();
-        String alertId = getTimeBasedAlertId(alertRule);
-        Alert.AlertActivity alertActivity =
-            getTimeBasedLimitUsageAlertActivity(limitUsageRule, timestamp, limitUsageMap);
-        return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
-    }
-
-    public Alert.AlertActivity getTimeBasedLimitUsageAlertActivity(
-        LimitUsageRule limitUsageRule,
-        long timestamp,
-        Map<String, Object> limitUsageMap
-    ) {
-        AlertRule alertRule = limitUsageRule.getAlertRule();
-        String snapshotTime = getTimeToTriggerForRule(alertRule);
+        String snapshotTime = limitUsageRule.getTimeToTriggerForRule();
         String alertGeneratedDate =
             getAlertGeneratedDate(alertRule.getLimitUsageAlertTimezone());
         String alertMessage =
             getTimeBasedAlertRuleBreachingMessage(limitUsageRule, limitUsageMap, snapshotTime, alertGeneratedDate);
-        return AlertUtils.createLimitUsageAlertActivity(timestamp, alertRule, alertMessage);
-    }
-
-    public String getTimeBasedAlertId(AlertRule alertRule) {
-        return String.format(
-            "%s-%s-RuleId%s",
-            getAccountsString(alertRule),
-            alertRule.getVersion(),
-            alertRule.getId()
-        );
+        UnpublishedAlert alert =
+            new ImmediateAlert(limitUsageRule.getTimeBasedLimitUsageAlert(getTimestamp(), alertMessage));
+        return List.of(alert);
     }
 
     public String getTimeBasedAlertRuleBreachingMessage(
@@ -535,10 +500,6 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         }
         sb.append("</tr>");
         return sb.toString();
-    }
-
-    public String getAccountsString(AlertRule alertRule) {
-        return Strings.join(alertRule.getAccountId(), ACCOUNT_DELIMITER);
     }
 
     @VisibleForTesting

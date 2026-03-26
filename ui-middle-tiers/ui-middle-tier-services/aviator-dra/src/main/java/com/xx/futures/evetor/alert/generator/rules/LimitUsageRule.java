@@ -75,6 +75,15 @@ public class LimitUsageRule {
         return alertRule.hasMicFamilySelection() ? alertRule.getMicFamily() : alertRule.getVenue();
     }
 
+    // 中文注释：这些 helper 只依赖规则本身或基于规则组装 alert，因此收回到 LimitUsageRule，避免 Source 持有过多 rule-centric 逻辑。
+    public String getAccountsString() {
+        return Strings.join(alertRule.getAccountId(), ",");
+    }
+
+    public String getTimeToTriggerForRule() {
+        return alertRule.getLimitUsageAlertTime() + " " + alertRule.getLimitUsageAlertTimezone();
+    }
+
     public boolean matchesVenueSelector(ClearingData.LimitUsage limitUsage) {
         HashSet<String> selectorValues = getVenueSelectorValues();
         if (selectorValues == null || selectorValues.isEmpty()) {
@@ -122,6 +131,15 @@ public class LimitUsageRule {
         );
     }
 
+    public String getTimeBasedAlertId() {
+        return String.format(
+            "%s-%s-RuleId%s",
+            getAccountsString(),
+            alertRule.getVersion(),
+            alertRule.getId()
+        );
+    }
+
     public String getThresholdForRule() {
         return alertRule.getLimitUsageAlertThreshold().getOperator()
             + alertRule.getLimitUsageAlertThreshold().getValue();
@@ -162,6 +180,20 @@ public class LimitUsageRule {
     public Alert getLimitUsageAlert(long timestamp, ClearingData.LimitUsage limitUsage) {
         String alertId = getAlertId(limitUsage);
         Alert.AlertActivity alertActivity = getLimitUsageAlertActivity(timestamp, limitUsage);
+        return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
+    }
+
+    public Alert.AlertActivity getTimeBasedLimitUsageAlertActivity(
+        long timestamp,
+        String alertMessage
+    ) {
+        return AlertUtils.createLimitUsageAlertActivity(timestamp, alertRule, alertMessage);
+    }
+
+    public Alert getTimeBasedLimitUsageAlert(long timestamp, String alertMessage) {
+        String alertId = getTimeBasedAlertId();
+        Alert.AlertActivity alertActivity =
+            getTimeBasedLimitUsageAlertActivity(timestamp, alertMessage);
         return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
     }
 }

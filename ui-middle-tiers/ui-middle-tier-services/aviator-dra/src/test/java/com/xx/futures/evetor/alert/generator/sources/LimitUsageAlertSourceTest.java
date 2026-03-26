@@ -532,14 +532,6 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
-    void testGetTimeBasedAlertId() {
-        assertEquals(
-            "04860801,04860800-0-RuleIdrule2",
-            limitUsageAlertSource.getTimeBasedAlertId(generateLimitUsageTimeBasedAlertRule())
-        );
-    }
-
-    @Test
     void testGetTimeBasedAlertRuleBreachingMessage() {
         String timezone = "Asia/Hong_Kong";
         String timestamp = "10:20 Asia/Hong_Kong";
