@@ -849,6 +849,45 @@ public class AlertRuleTest {
         assertTrue(rule.isValid());
     }
 
+    // 中文注释：create alert 接口的常见前端 payload 会带 venue:[] 和 micFamily:[...]，这里显式守住 builder 反序列化与 model 校验契约，避免再次出现 POST 400。
+    @Test
+    public void testCreateRulePayloadWithEmptyVenueAndMicFamilyCanBeMapped() throws JsonProcessingException {
+        String newJson = "{"
+            + "\"version\": 0,"
+            + "\"symphonyEnabled\": false,"
+            + "\"recapEmail\": false,"
+            + "\"genericEmail\": false,"
+            + "\"clientLimitUsageEmail\": true,"
+            + "\"hasHistoricalClientLimitUsageEmail\": false,"
+            + "\"kerberos\": \"liyiyi\","
+            + "\"message\": \"alert message\","
+            + "\"venue\": [],"
+            + "\"micFamily\": ["
+            + "\"SFX\""
+            + "],"
+            + "\"accountId\": ["
+            + "\"INI04211\""
+            + "],"
+            + "\"emailAddress\": \"liying_1@gs.com\","
+            + "\"limitUsageAlertThreshold\": {"
+            + "\"operator\": \">\","
+            + "\"comparisonType\": \"Value\","
+            + "\"value\": 85"
+            + "},"
+            + "\"enabled\": true"
+            + "}";
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        AlertRule rule = mapper.readValue(newJson, AlertRule.class);
+        assertAll(
+            () -> assertFalse(rule.hasMicVenueSelection()),
+            () -> assertTrue(rule.hasMicFamilySelection()),
+            () -> assertTrue(rule.getMicFamily().contains("SFX")),
+            () -> assertTrue(rule.isValid())
+        );
+    }
+
     // 中文注释：覆盖 MIC 与 MICFamily 互斥约束，避免同一条 LimitUsage 规则同时携带两个 selector。
     @Test
     public void testValidateLimitUsageRuleWithVenueAndMicFamily() throws JsonProcessingException {

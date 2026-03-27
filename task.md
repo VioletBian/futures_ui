@@ -184,6 +184,21 @@ review 给出的重构方向是：
 - 以本次为例，`getTimeBasedLimitUsageAlert -> getTimeBasedLimitUsageAlertActivity -> getTimeBasedAlertRuleBreachingMessage -> getTableContent` 应继续保留在 `LimitUsageAlertSource`
 - 仍然纯属 rule metadata 的 helper，例如 `getAccountsString`、`getTimeToTriggerForRule`，可以继续留在 `LimitUsageRule`
 
+### 2.4 create alert 请求返回 400 时，先查模型绑定和校验
+
+结合你在生产项目里看到的 `AlertsRestBase` 代码，可以把这件事先收敛成一个排查原则：
+
+- `/rests/alerts/rule` 很大概率就是类级别 `/rests/alerts` 加方法级别 `/rule` 拼出来的 create alert 入口
+- 如果前端 `validateForm` 已通过，但 POST 仍然返回 `400`，优先怀疑后端 `AlertRule` 的 JSON 绑定或 `isValid()` 校验，而不是先怀疑 URI 找错
+
+这次 `MICFamily` 相关最该优先确认的是：
+
+- create-rule 服务实际部署的 `model/alert-rule` 版本是否已经包含 `AlertRuleBuilder.setMicFamily(...)`
+- 前端常见 payload 形态 `venue: []` + `micFamily: ["SFX"]` 在服务端反序列化后，是否仍满足 `hasMicVenueSelection() == false`、`hasMicFamilySelection() == true`
+- `versionIncrementCheck(...)` 或其后续校验看到的 `AlertRule.isValid()` 是否仍然返回 true
+
+如果这三点有任一点没跟上，就会出现“前端本地校验通过，但 create alert 直接 400”的现象。
+
 ### 3. 缺事实时不要猜
 
 如果在实现过程中缺少关键事实：

@@ -1300,6 +1300,7 @@ public class AlertRule implements Serializable {
 
         @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
         public AlertRuleBuilder setMicFamily(HashSet<String> micFamily) {
+            // 中文注释：/rests/alerts/rule 的创建请求会走 builder 反序列化，micFamily-only payload 能否过 400 取决于这里是否接住该字段。
             building.micFamily = micFamily;
             return this;
         }
