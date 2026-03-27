@@ -303,10 +303,16 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         String snapshotTime = limitUsageRule.getTimeToTriggerForRule();
         String alertGeneratedDate =
             getAlertGeneratedDate(alertRule.getLimitUsageAlertTimezone());
-        String alertMessage =
-            getTimeBasedAlertRuleBreachingMessage(limitUsageRule, limitUsageMap, snapshotTime, alertGeneratedDate);
         UnpublishedAlert alert =
-            new ImmediateAlert(limitUsageRule.getTimeBasedLimitUsageAlert(getTimestamp(), alertMessage));
+            new ImmediateAlert(
+                getTimeBasedLimitUsageAlert(
+                    limitUsageRule,
+                    getTimestamp(),
+                    limitUsageMap,
+                    snapshotTime,
+                    alertGeneratedDate
+                )
+            );
         return List.of(alert);
     }
 
@@ -315,17 +321,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         String snapshotTime,
         String alertDate
     ) {
-        return getTimeBasedAlertRuleBreachingMessage(null, limitUsageMap, snapshotTime, alertDate);
-    }
-
-    // 中文注释：time-based selector 的 snapshot 校验和筛选应沿用 Source 既有的 JSON 渲染链路，而不是在 Rule 层提前过滤掉整包数据。
-    public String getTimeBasedAlertRuleBreachingMessage(
-        LimitUsageRule limitUsageRule,
-        Map<String, Object> limitUsageMap,
-        String snapshotTime,
-        String alertDate
-    ) {
-        String tableContent = getTableContent(limitUsageRule, limitUsageMap);
+        String tableContent = getTableContent(limitUsageMap);
 
         if (StringUtils.isBlank(tableContent)) {
             LOG.warn(
@@ -344,14 +340,55 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         return "<html><body>" + messageIntro + tableContent + "</body></html>";
     }
 
-    public String getTableContent(Map<String, Object> limitUsageMap) {
-        return getTableContent(null, limitUsageMap);
+    // 中文注释：time-based alert 的 message 依赖 Source 里的表格渲染链路，因此整条 alert build 链继续保留在 Source。
+    public Alert getTimeBasedLimitUsageAlert(
+        LimitUsageRule limitUsageRule,
+        long timestamp,
+        Map<String, Object> limitUsageMap,
+        String snapshotTime,
+        String alertGeneratedDate
+    ) {
+        AlertRule alertRule = limitUsageRule.getAlertRule();
+        String alertId = getTimeBasedAlertId(alertRule);
+        Alert.AlertActivity alertActivity = getTimeBasedLimitUsageAlertActivity(
+            limitUsageRule,
+            timestamp,
+            limitUsageMap,
+            snapshotTime,
+            alertGeneratedDate
+        );
+        return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
     }
 
-    public String getTableContent(LimitUsageRule limitUsageRule, Map<String, Object> limitUsageMap) {
+    public Alert.AlertActivity getTimeBasedLimitUsageAlertActivity(
+        LimitUsageRule limitUsageRule,
+        long timestamp,
+        Map<String, Object> limitUsageMap,
+        String snapshotTime,
+        String alertGeneratedDate
+    ) {
+        String alertMessage =
+            getTimeBasedAlertRuleBreachingMessage(limitUsageMap, snapshotTime, alertGeneratedDate);
+        return AlertUtils.createLimitUsageAlertActivity(
+            timestamp,
+            limitUsageRule.getAlertRule(),
+            alertMessage
+        );
+    }
+
+    public String getTimeBasedAlertId(AlertRule alertRule) {
+        return String.format(
+            "%s-%s-RuleId%s",
+            Strings.join(alertRule.getAccountId(), ","),
+            alertRule.getVersion(),
+            alertRule.getId()
+        );
+    }
+
+    public String getTableContent(Map<String, Object> limitUsageMap) {
         StringBuilder table = new StringBuilder();
         for (Map.Entry<String, Object> entry : limitUsageMap.entrySet()) {
-            String contentRow = getBody(limitUsageRule, entry);
+            String contentRow = getBody(entry);
             if (StringUtils.isNotBlank(contentRow)) {
                 table.append(contentRow);
             } else {
@@ -371,6 +408,8 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
             0,
             getHeaderRow(
                 Arrays.asList(
+                    "Exchange",
+                    "MicFamily",
                     "Account Id",
                     "Margin Usage",
                     "Margin Limit",
@@ -384,23 +423,24 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
             + "</table>";
     }
 
+    // 中文注释：合作方最新数据约定是 snapshot row 必须同时带 mic 与 micFamily，因此这里统一校验并把两列都写入邮件表格。
     public String getBody(Map.Entry<String, Object> entry) {
-        return getBody(null, entry);
-    }
-
-    public String getBody(LimitUsageRule limitUsageRule, Map.Entry<String, Object> entry) {
         if (entry.getValue() instanceof Map) {
             Map<String, Object> limitUsage = (Map<String, Object>) entry.getValue();
-            if (!isValidLimitUsage(limitUsageRule, limitUsage) || !matchesSnapshotSelector(limitUsageRule, limitUsage)) {
+            if (!isValidLimitUsage(limitUsage)) {
                 return null;
             }
 
+            String mic = (String) limitUsage.get("mic");
+            String micFamily = (String) limitUsage.get("micFamily");
             Double usage = (Double) limitUsage.get("usage");
             Double limit = (Double) limitUsage.get("limit");
             String currency = (String) limitUsage.get("currency");
             double percentage = calculatePercentage(usage, limit);
             return getContentRow(
                 Arrays.asList(
+                    mic,
+                    micFamily,
                     entry.getKey(),
                     formatDouble(usage),
                     formatDouble(limit),
@@ -412,44 +452,15 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
         return null;
     }
 
+    // 中文注释：time-based snapshot 现在要求 mic、micFamily、usage、limit、currency 全部存在，避免邮件里再丢 venue 维度信息。
     public boolean isValidLimitUsage(Map<String, Object> limitUsage) {
-        return isValidLimitUsage(null, limitUsage);
-    }
-
-    // 中文注释：在既有 usage/limit/currency 校验上，按 selector 类型补齐 snapshot 必需字段，避免 Source/Rule 各自维护一套 map 校验分支。
-    public boolean isValidLimitUsage(LimitUsageRule limitUsageRule, Map<String, Object> limitUsage) {
-        List<String> columns = Arrays.asList("usage", "limit", "currency");
+        List<String> columns = Arrays.asList("mic", "micFamily", "usage", "limit", "currency");
         for (String column : columns) {
             if (!limitUsage.containsKey(column) || ObjectUtils.isEmpty(limitUsage.get(column))) {
                 return false;
             }
         }
-
-        if (limitUsageRule == null) {
-            return true;
-        }
-
-        String selectorColumn = limitUsageRule.getAlertRule().hasMicFamilySelection()
-            ? "micFamily"
-            : "mic";
-        return limitUsage.containsKey(selectorColumn) && !ObjectUtils.isEmpty(limitUsage.get(selectorColumn));
-    }
-
-    private boolean matchesSnapshotSelector(LimitUsageRule limitUsageRule, Map<String, Object> limitUsage) {
-        if (limitUsageRule == null) {
-            return true;
-        }
-
-        java.util.HashSet<String> selectorValues = limitUsageRule.getVenueSelectorValues();
-        if (selectorValues == null || selectorValues.isEmpty()) {
-            return false;
-        }
-
-        String selectorColumn = limitUsageRule.getAlertRule().hasMicFamilySelection()
-            ? "micFamily"
-            : "mic";
-        Object selectorValue = limitUsage.get(selectorColumn);
-        return selectorValue != null && selectorValues.contains(String.valueOf(selectorValue));
+        return true;
     }
 
     public String format(String position, String value) {

@@ -457,8 +457,8 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
-    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyNoMatchStillProcessesAlert() {
-        // 中文注释：即便 MICFamily selector 没命中，也要继续生成 alert 让下游拿到空 message，保留 ERROR 邮件语义。
+    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilySnapshotStillProcessesAlert() {
+        // 中文注释：time-based 快照不再按 selector 预过滤，只要返回行结构完整就继续走原有 alert 生成链路。
         AlertRule rule = buildMicFamilyTimeBasedAlertRule();
         limitUsageAlertSource.setScheduler(scheduler);
         limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
@@ -466,7 +466,7 @@ class LimitUsageAlertSourceTest {
         ScheduledFuture future = mock(ScheduledFuture.class);
         when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
         when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
-            .thenReturn(buildMicFamilyTimeBasedResponse("UNKNOWN", "NON_SFX"));
+            .thenReturn(buildMicFamilyTimeBasedResponse("XZCE", "SFX"));
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
 
         limitUsageAlertSource.processNewAlertRule(rule);
@@ -593,26 +593,22 @@ class LimitUsageAlertSourceTest {
     @Test
     void testGetBodyWithValidLimitUsage() {
         Map<String, Object> limitUsage = new HashMap<>();
+        limitUsage.put("mic", "XZCE");
+        limitUsage.put("micFamily", "SFX");
         limitUsage.put("usage", 11495905.20272978);
         limitUsage.put("limit", 16167814.417355172);
         limitUsage.put("currency", "USD");
 
         Map.Entry<String, Object> entry = new HashMap.SimpleEntry<>("55300015", limitUsage);
-        String expected = "<tr><td style=\"text-align:center\">55300015</td><td style=\"text-align:center\">11495905.2</td>" +
+        String expected = "<tr><td style=\"text-align:center\">XZCE</td><td style=\"text-align:center\">SFX</td><td style=\"text-align:center\">55300015</td><td style=\"text-align:center\">11495905.2</td>" +
             "<td style=\"text-align:center\">16167814.4</td><td style=\"text-align:center\">USD</td><td style=\"text-align:center\">71.1%</td></tr>";
         String actual = limitUsageAlertSource.getBody(entry);
         assertEquals(expected, actual);
     }
 
     @Test
-    void testGetBodyWithMicFamilyRuleAndMatchingSelector() {
-        // 中文注释：MICFamily snapshot 的 selector 过滤应在 Source.getBody 里完成，命中时仍沿用原有表格行输出。
-        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
-            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(
-                buildMicFamilyTimeBasedAlertRule(),
-                application,
-                activeAlerts
-            );
+    void testGetBodyWithInvalidLimitUsage_missingMic() {
+        // 中文注释：合作方新数据契约要求 mic 与 micFamily 都必须存在，缺任一字段都不应生成邮件行。
         Map<String, Object> limitUsage = new HashMap<>();
         limitUsage.put("usage", 11495905.20272978);
         limitUsage.put("limit", 16167814.417355172);
@@ -620,26 +616,20 @@ class LimitUsageAlertSourceTest {
         limitUsage.put("micFamily", "SFX");
 
         Map.Entry<String, Object> entry = new HashMap.SimpleEntry<>("55300015", limitUsage);
-        Assertions.assertNotNull(limitUsageAlertSource.getBody(limitUsageRule, entry));
+        Assertions.assertNull(limitUsageAlertSource.getBody(entry));
     }
 
     @Test
-    void testGetBodyWithMicFamilyRuleAndNonMatchingSelector() {
-        // 中文注释：MICFamily selector 不命中时，Source.getBody 应返回 null，让上层保留空 message 的处理语义。
-        com.xx.futures.evetor.alert.generator.rules.LimitUsageRule limitUsageRule =
-            new com.xx.futures.evetor.alert.generator.rules.LimitUsageRule(
-                buildMicFamilyTimeBasedAlertRule(),
-                application,
-                activeAlerts
-            );
+    void testGetBodyWithInvalidLimitUsage_missingMicFamily() {
+        // 中文注释：合作方新数据契约要求 mic 与 micFamily 都必须存在，缺任一字段都不应生成邮件行。
         Map<String, Object> limitUsage = new HashMap<>();
+        limitUsage.put("mic", "XZCE");
         limitUsage.put("usage", 11495905.20272978);
         limitUsage.put("limit", 16167814.417355172);
         limitUsage.put("currency", "USD");
-        limitUsage.put("micFamily", "NON_SFX");
 
         Map.Entry<String, Object> entry = new HashMap.SimpleEntry<>("55300015", limitUsage);
-        Assertions.assertNull(limitUsageAlertSource.getBody(limitUsageRule, entry));
+        Assertions.assertNull(limitUsageAlertSource.getBody(entry));
     }
 
     @Test

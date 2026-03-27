@@ -100,6 +100,7 @@ public class TestUtils {
         limitUsageMap.put("limit", 100d);
         limitUsageMap.put("currency", currency);
         limitUsageMap.put("mic", venue);
+        limitUsageMap.put("micFamily", "SFX");
         return limitUsageMap;
     }
 
@@ -445,21 +446,23 @@ public class TestUtils {
                 return "<html><body>Please find below margin usage details for accounts [04860800, 55300017] on 20250120 10:20 Asia/Hong_Kong.<br/>"
                     + "Note: These data do not contain any manual override done during the trading day.<br/>"
                     + "<br><table style=\"border-collapse: collapse; width: 100%;\" border=\"1\">"
-                    + "<tr><td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
+                    + "<tr><td style=\"text-align:center\"><strong>Exchange</strong></td><td style=\"text-align:center\"><strong>MicFamily</strong></td>"
+                    + "<td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Limit</strong></td><td style=\"text-align:center\"><strong>Currency</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Usage Percentage</strong></td></tr>"
-                    + "<tr><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
+                    + "<tr><td style=\"text-align:center\">XDCE</td><td style=\"text-align:center\">SFX</td><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
                     + "<td style=\"text-align:center\">USD</td><td style=\"text-align:center\">51.0%</td></tr>"
-                    + "<tr><td style=\"text-align:center\">55300017</td><td style=\"text-align:center\">70.0</td><td style=\"text-align:center\">100.0</td>"
+                    + "<tr><td style=\"text-align:center\">XZCE</td><td style=\"text-align:center\">SFX</td><td style=\"text-align:center\">55300017</td><td style=\"text-align:center\">70.0</td><td style=\"text-align:center\">100.0</td>"
                     + "<td style=\"text-align:center\">USD</td><td style=\"text-align:center\">70.0%</td></tr></table></body></html>";
             case 2:
                 return "<html><body>Please find below margin usage details for accounts [04860800, 04860801] on 20250120 10:20 Asia/Hong_Kong.<br/>"
                     + "Note: These data do not contain any manual override done during the trading day.<br/>"
                     + "<br><table style=\"border-collapse: collapse; width: 100%;\" border=\"1\">"
-                    + "<tr><td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
+                    + "<tr><td style=\"text-align:center\"><strong>Exchange</strong></td><td style=\"text-align:center\"><strong>MicFamily</strong></td>"
+                    + "<td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Limit</strong></td><td style=\"text-align:center\"><strong>Currency</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Usage Percentage</strong></td></tr>"
-                    + "<tr><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
+                    + "<tr><td style=\"text-align:center\">XDCE</td><td style=\"text-align:center\">SFX</td><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
                     + "<td style=\"text-align:center\">USD</td><td style=\"text-align:center\">51.0%</td></tr></table></body></html>";
             case 3:
             case 4:
@@ -469,10 +472,11 @@ public class TestUtils {
                 return "<html><body>Please find below margin usage details for accounts [04860800] on 20250120 10:20 Asia/Hong_Kong.<br/>"
                     + "Note: These data do not contain any manual override done during the trading day.<br/>"
                     + "<br><table style=\"border-collapse: collapse; width: 100%;\" border=\"1\">"
-                    + "<tr><td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
+                    + "<tr><td style=\"text-align:center\"><strong>Exchange</strong></td><td style=\"text-align:center\"><strong>MicFamily</strong></td>"
+                    + "<td style=\"text-align:center\"><strong>Account Id</strong></td><td style=\"text-align:center\"><strong>Margin Usage</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Limit</strong></td><td style=\"text-align:center\"><strong>Currency</strong></td>"
                     + "<td style=\"text-align:center\"><strong>Margin Usage Percentage</strong></td></tr>"
-                    + "<tr><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
+                    + "<tr><td style=\"text-align:center\">XDCE</td><td style=\"text-align:center\">SFX</td><td style=\"text-align:center\">04860800</td><td style=\"text-align:center\">51.0</td><td style=\"text-align:center\">100.0</td>"
                     + "<td style=\"text-align:center\">USD</td><td style=\"text-align:center\">51.0%</td></tr></table></body></html>";
         }
     }

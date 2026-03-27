@@ -131,15 +131,6 @@ public class LimitUsageRule {
         );
     }
 
-    public String getTimeBasedAlertId() {
-        return String.format(
-            "%s-%s-RuleId%s",
-            getAccountsString(),
-            alertRule.getVersion(),
-            alertRule.getId()
-        );
-    }
-
     public String getThresholdForRule() {
         return alertRule.getLimitUsageAlertThreshold().getOperator()
             + alertRule.getLimitUsageAlertThreshold().getValue();
@@ -180,20 +171,6 @@ public class LimitUsageRule {
     public Alert getLimitUsageAlert(long timestamp, ClearingData.LimitUsage limitUsage) {
         String alertId = getAlertId(limitUsage);
         Alert.AlertActivity alertActivity = getLimitUsageAlertActivity(timestamp, limitUsage);
-        return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
-    }
-
-    public Alert.AlertActivity getTimeBasedLimitUsageAlertActivity(
-        long timestamp,
-        String alertMessage
-    ) {
-        return AlertUtils.createLimitUsageAlertActivity(timestamp, alertRule, alertMessage);
-    }
-
-    public Alert getTimeBasedLimitUsageAlert(long timestamp, String alertMessage) {
-        String alertId = getTimeBasedAlertId();
-        Alert.AlertActivity alertActivity =
-            getTimeBasedLimitUsageAlertActivity(timestamp, alertMessage);
         return AlertUtils.createLimitUsageAlert(alertId, timestamp, application, alertActivity);
     }
 }

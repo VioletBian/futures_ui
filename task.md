@@ -100,18 +100,19 @@
 
 `MICFamily` 表示一个 “Mic合集” 维度。
 
-这次最新确认的真实业务前提是：
+这次最新确认的业务前提和之前又有一轮更新：
 
-- `micFamily` 规则的目标账号类型是 `GMI`
-- 该账号类型代表多个交易所子账号合并后的聚合账号
-- 客户只知道这个聚合账号整体的资金占用量，不知道、也不关心每个具体 `mic` 的拆分占用
-- 因此这类新 `LimitUsage` 原型实际到达中台时，是 `micFamily=SFX` 且 `mic=UNKNOWN`
-- 对这种聚合账号，系统不会提供可用于告警判断的 `mic level` LimitUsage 数据，只会提供 `micFamily level` 数据
+- 合作方改动后，进入本链路的 `LimitUsage` 数据都会同时带 `mic` 和 `micFamily`
+- 两个字段都是必要字段，不再把 `micFamily` 当作可选补充字段
+- 规则侧只需要知道本条 rule 想按 `MIC` 还是按 `MICFamily` 判断，然后在匹配时读取对应字段
+- `LimitUsage` 本质是 account level data，用于 `MIC` 的 account 和用于 `MICFamily` 的聚合 account 在业务上应当不同
+- 后续前端也会继续限制账号选择，避免在 mic level account 上错误配置 `MICFamily rule`
 
-因此在规则匹配阶段，不能只保留旧的 “事件 mic 命中规则 mic 集合” 逻辑，还需要支持并明确约束：
+因此当前更稳妥的实现口径是：
 
-- 事件 `micFamily` 命中规则 `micFamily` 集合
-- 当规则是 `micFamily` 规则时，命中的应当是聚合级别的 LimitUsage 数据，也就是 `mic` 为空或 `UNKNOWN`
+- threshold / realtime 路径：只在 `shouldAlert` 一类真实匹配入口按 rule selector 选择读取 `mic` 或 `micFamily`
+- time-based / snapshot 路径：不再按 selector 预过滤 row，而是统一校验 `mic + micFamily + usage + limit + currency`
+- time-based 邮件表格统一带出 `mic` 和 `micFamily` 两列，保留完整上下文
 
 ### 3. 兼容旧规则
 
@@ -122,7 +123,7 @@
 - 旧规则读出来后，仍按原有 `MIC` 逻辑工作
 - 新规则可以表达 `MICFamily`
 - 运行态根据 selector 类型分支匹配
-- `MICFamily` 规则不应因为一条同时带真实 `mic` 和 `micFamily` 的混合 payload 而误触发
+- 不把某个临时 mock 数据形态固化成线上 invariant，而是以合作方最新 payload 合同为准
 
 ## 对实现方式的约束
 
@@ -177,12 +178,11 @@ review 给出的重构方向是：
 - 接近 data parsing / snapshot row handling 的函数留在 `LimitUsageAlertSource`
 - 接近 `AlertRule` / `LimitUsageRule` 本身属性和 alert 组装的函数，尽量迁移到 `LimitUsageRule`
 
-典型例子包括：
+但这条原则有一个新补充：
 
-- `getTimeToTriggerForRule`
-- `getTimeBasedAlertId`
-- `getTimeBasedLimitUsageAlert`
-- `getTimeBasedLimitUsageAlertActivity`
+- 如果某条 helper 链已经依赖 `getTableContent` / `getBody` / `isValidLimitUsage` 这类 Source 自己的数据渲染函数，就不要把链路一半拆到 `LimitUsageRule`
+- 以本次为例，`getTimeBasedLimitUsageAlert -> getTimeBasedLimitUsageAlertActivity -> getTimeBasedAlertRuleBreachingMessage -> getTableContent` 应继续保留在 `LimitUsageAlertSource`
+- 仍然纯属 rule metadata 的 helper，例如 `getAccountsString`、`getTimeToTriggerForRule`，可以继续留在 `LimitUsageRule`
 
 ### 3. 缺事实时不要猜
 

@@ -62,21 +62,19 @@ flowchart LR
 
 ## 新确认的业务前提
 
-这次又明确了一层此前文档里没有写实的业务约束：
+这次又明确了一层此前文档里没有写实的业务约束，而且和前一轮理解相比有修正：
 
-- 新增 `MICFamily` 不是为了给已有 `MIC` 数据再加一个辅助字段
-- 而是为了支持“客户子账号合并”之后的聚合账号视角
-- 该类账号的账号类型是 `GMI`
-- 客户只知道一个大的聚合账号在若干交易所上的总资金占用量，不知道每个具体 `mic` 的拆分
-- 因此这类 `LimitUsage` 到中台时，实际语义是 `micFamily=SFX`、`mic=UNKNOWN`
-- 对应账号不会再提供可用于告警判断的 `mic level` LimitUsage 数据，只会有 `micFamily level` 数据
+- 新增 `MICFamily` 的业务背景仍然来自聚合账号视角
+- 但合作方当前约定是：进入本链路的 `LimitUsage` 数据都同时带 `mic` 和 `micFamily`
+- 两个字段现在都属于必要字段，而不是“聚合账号只有 micFamily、没有 mic”
+- rule 侧只需要知道本条规则想按哪个 selector 匹配，然后在实时匹配时读取对应字段
+- mic level account 和 micFamily level account 仍然在业务上应是不同账号集合，后续会继续靠前端配置限制去避免错配
 
 所以对 `LimitUsage Alert` 来说：
 
-- 旧规则仍然可以按 `MIC` 命中传统的 `mic level` 数据
-- 新规则若选择 `MICFamily`，命中的应是聚合级别 `LimitUsage`
-- 这类命中不应该依赖真实 `mic`
-- 如果出现同时带真实 `mic` 与 `micFamily` 的混合 payload，它更像是不符合当前业务前提的异常数据，而不是 `MICFamily` 规则应该正常命中的标准输入
+- 旧规则仍然按 `MIC` 命中传统 mic level 数据
+- 新规则可以按 `MICFamily` 命中相应聚合账号数据
+- time-based 快照邮件不再按 selector 预过滤 row，而是统一保留 `mic` 和 `micFamily` 两列
 
 ## 模块职责
 
@@ -213,7 +211,7 @@ flowchart LR
 
 - `MIC` 规则匹配 `mic level` LimitUsage
 - `MICFamily` 规则匹配 `micFamily level` / GMI 聚合级 LimitUsage
-- 对 `MICFamily` 规则，`mic` 只是占位值，预期是 `UNKNOWN` 或空值，不应再作为真实 venue 参与命中判断
+- 由于合作方现在会同时下发 `mic` 和 `micFamily`，所以实时匹配只需要在命中入口按 rule selector 读取对应字段，不需要到处重复判断 snapshot 应看哪一个字段
 
 因此这里不是“原始数据一进来就直接发 alert”，而是：
 
@@ -229,9 +227,10 @@ flowchart LR
 - 到点后不是等实时消息，而是主动拉 `/limitusage/accounts`
 - 用拉回来的 snapshot 做一次规则计算
 
-结合 review 新确认的约束，这条链路还需要额外注意两点：
+结合 review 和最新生产项目修正，这条链路还需要额外注意三点：
 
-- selector 对 snapshot row 的筛选应优先收敛在 `LimitUsageAlertSource` 现有的 `getBody / getTableContent / isValidLimitUsage` 链路，而不是在 `LimitUsageRule` 里先做 map 级预过滤
+- time-based snapshot 不再按 selector 预过滤 row，而是统一走 `LimitUsageAlertSource` 现有的 `getBody / getTableContent / isValidLimitUsage` 链路
+- snapshot row 现在要求 `mic`、`micFamily`、`usage`、`limit`、`currency` 全部存在，表格也统一输出 `mic` 和 `micFamily`
 - 即便最终没有拿到有效 row，也不能因为一次新的上游过滤就直接吞掉后续处理；旧链路允许下游看到空 `message`，从而发出 ERROR 类提示邮件暴露数据缺失问题
 
 这说明 threshold 与 time-based 的核心差别是：
