@@ -1,0 +1,4 @@
+interface:
+  display_name: "Business Context Learning"
+  short_description: "Learn and maintain evolving business/project context"
+  default_prompt: "Capture confirmed facts, open questions, and sync the canonical business-context document"
