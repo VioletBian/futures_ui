@@ -27,8 +27,8 @@
 2. `ui-middle-tiers`
    - `LimitUsage Alert` 的规则接入
    - 规则装载
-   - 规则匹配
-   - threshold / time-based 触发前的 selector 判断
+   - threshold 规则匹配
+   - time-based 快照装载与邮件内容生成
 
 ## 明确不在范围内
 
@@ -79,8 +79,8 @@
 
 ### 3. threshold 与 time-based 的差异
 
-- threshold 规则：由实时 `ClearingData.LimitUsage` 事件驱动
-- time-based 规则：由 `LimitUsageAlertSource` 到点后通过 `LimitUsageApi` / `LimitUsageLoader` 拉快照再判断
+- threshold 规则：由实时 `ClearingData.LimitUsage` 事件驱动，并通过 `shouldAlert` 判断是否触发
+- time-based 规则：由 `LimitUsageAlertSource` 到点后通过 `LimitUsageApi` / `LimitUsageLoader` 拉快照并直接生成提醒邮件，不走 `shouldAlert`
 
 ### 4. 通知链路不属于本次改造重点
 
@@ -111,7 +111,7 @@
 因此当前更稳妥的实现口径是：
 
 - threshold / realtime 路径：只在 `shouldAlert` 一类真实匹配入口按 rule selector 选择读取 `mic` 或 `micFamily`
-- time-based / snapshot 路径：不再按 selector 预过滤 row，而是统一校验 `mic + micFamily + usage + limit + currency`
+- time-based / snapshot 路径：不按 selector 判断是否触发，而是统一校验 `mic + micFamily + usage + limit + currency`
 - time-based 邮件表格统一带出 `mic` 和 `micFamily` 两列，保留完整上下文
 
 ### 3. 兼容旧规则
@@ -226,5 +226,5 @@ review 给出的重构方向是：
 
 1. `LimitUsage Alert` 规则能够表达 `MICFamily`
 2. `MIC` 与 `MICFamily` 在规则层保持互斥
-3. 规则装载后，实时路径和 time-based 路径都能按 selector 正确匹配
+3. 规则装载后，实时路径按 selector 正确匹配，time-based 路径按最新约定正确发送快照邮件
 4. 旧 `MIC-only` 规则不被破坏

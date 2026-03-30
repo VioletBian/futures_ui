@@ -211,7 +211,7 @@ flowchart LR
 
 - `MIC` 规则匹配 `mic level` LimitUsage
 - `MICFamily` 规则匹配 `micFamily level` / GMI 聚合级 LimitUsage
-- 由于合作方现在会同时下发 `mic` 和 `micFamily`，所以实时匹配只需要在命中入口按 rule selector 读取对应字段，不需要到处重复判断 snapshot 应看哪一个字段
+- 由于合作方现在会同时下发 `mic` 和 `micFamily`，所以实时 threshold 匹配只需要在命中入口按 rule selector 读取对应字段
 
 因此这里不是“原始数据一进来就直接发 alert”，而是：
 
@@ -225,11 +225,11 @@ flowchart LR
 
 - time-based 规则进入 `scheduledRules`
 - 到点后不是等实时消息，而是主动拉 `/limitusage/accounts`
-- 用拉回来的 snapshot 做一次规则计算
+- 用拉回来的 snapshot 直接生成 time-based 邮件内容
 
 结合 review 和最新生产项目修正，这条链路还需要额外注意三点：
 
-- time-based snapshot 不再按 selector 预过滤 row，而是统一走 `LimitUsageAlertSource` 现有的 `getBody / getTableContent / isValidLimitUsage` 链路
+- time-based snapshot 不走 `shouldAlert`，而是统一走 `LimitUsageAlertSource` 现有的 `getBody / getTableContent / isValidLimitUsage` 链路
 - snapshot row 现在要求 `mic`、`micFamily`、`usage`、`limit`、`currency` 全部存在，表格也统一输出 `mic` 和 `micFamily`
 - 即便最终没有拿到有效 row，也不能因为一次新的上游过滤就直接吞掉后续处理；旧链路允许下游看到空 `message`，从而发出 ERROR 类提示邮件暴露数据缺失问题
 
@@ -306,7 +306,7 @@ flowchart LR
 6. 启动/轮询补偿时，`CustomAlertsPollingThread` 也会批量把 ES / generated rules 灌入 `LimitUsageAlertSource`
 7. `LimitUsageAlertSource` 对原始 `AlertRule` 做 limit usage 规则识别、权限检查、旧版本替换、threshold/time-based 分流
 8. 实时 `ClearingData.LimitUsage` 通过 `LimitUsageAlertEngineConsumer -> FastAlertEngine` 进入 alert pipeline
-9. `LimitUsageRule` 对实时数据做命中判断；time-based 规则则在定时点通过 loader server 拉 snapshot 再判断
+9. `LimitUsageRule` 只对实时 threshold 数据做命中判断；time-based 规则则在定时点通过 loader server 拉 snapshot 并直接生成邮件内容
 10. 命中后由 `FastAlertEngine` 生成并发布 `LimitUsageAlert`
 11. `limitusageserver` 侧消费 `Coverage.Alert`，做 filter/process/validation
 12. `LimitUsageAlertConsumer` 回查 `AlertRule` 后决定最终通知方式

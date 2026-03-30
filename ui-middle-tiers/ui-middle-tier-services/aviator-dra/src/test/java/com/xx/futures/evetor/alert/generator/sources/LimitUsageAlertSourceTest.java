@@ -457,8 +457,8 @@ class LimitUsageAlertSourceTest {
     }
 
     @Test
-    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilySnapshotStillProcessesAlert() {
-        // 中文注释：time-based 快照不再按 selector 预过滤，只要返回行结构完整就继续走原有 alert 生成链路。
+    void testScheduleTimeBasedRuleWithMockedHttpClient_micFamilyNoMatchStillProcessesAlert() {
+        // 中文注释：time-based 类规则到点就发，不走 shouldAlert；即便 selector 表面不匹配，也仍应继续发送。
         AlertRule rule = buildMicFamilyTimeBasedAlertRule();
         limitUsageAlertSource.setScheduler(scheduler);
         limitUsageAlertSource.setJetstreamHttpClient(jetstreamHttpClient);
@@ -466,7 +466,7 @@ class LimitUsageAlertSourceTest {
         ScheduledFuture future = mock(ScheduledFuture.class);
         when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class))).thenReturn(future);
         when(jetstreamHttpClient.get(anyString(), isNull(), any(MultivaluedMap.class), isNull(), eq("application/json")))
-            .thenReturn(buildMicFamilyTimeBasedResponse("XZCE", "SFX"));
+            .thenReturn(buildMicFamilyTimeBasedResponse("XZCE", "NON_SFX"));
         doReturn(5000L).when(limitUsageAlertSource).calculateTimeDelay(rule);
 
         limitUsageAlertSource.processNewAlertRule(rule);
@@ -646,7 +646,7 @@ class LimitUsageAlertSourceTest {
         assertEquals(1000, limitUsageAlertSource.getTimeDelay(1000));
     }
 
-    // 中文注释：MICFamily 相关 helper 只补 rule 级 selector 测试数据，time-based 的实际 row 过滤已回收到 Source.getBody 链路。
+    // 中文注释：MICFamily 相关 helper 只补测试数据；threshold 走 rule selector，time-based 则按最新约定直接发送 snapshot 邮件。
     private AlertRule buildMicFamilyLimitUsageAlertRule() {
         return new AlertRule.AlertRuleBuilder(generateLimitUsageAlertRule())
             .setVenue(null)

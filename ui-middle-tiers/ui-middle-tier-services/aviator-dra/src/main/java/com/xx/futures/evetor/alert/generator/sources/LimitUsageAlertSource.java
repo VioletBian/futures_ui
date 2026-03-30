@@ -198,7 +198,7 @@ public class LimitUsageAlertSource implements AlertGeneratorSource {
                     limitUsageRule.getVenueSelectorType(),
                     limitUsageRule.getVenueSelectorValues()
                 );
-                // 中文注释：不要在 Source 入口先把无匹配 row 的快照吞掉；旧链路需要让空 message 继续流向下游，触发 ERROR 类提示邮件。
+                // 中文注释：time-based 类规则到点就直接发送 snapshot 邮件；这里保留空 message 下游告警语义，也不再把 selector 当作触发门槛。
                 alertEngine.process(generateNewAlerts(limitUsageRule, data));
             } catch (JsonProcessingException e) {
                 String errorMessage = String.format(
